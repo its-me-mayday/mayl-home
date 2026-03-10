@@ -13,6 +13,11 @@ variable "proxmox_password" {
   sensitive   = true
 }
 
+variable "proxmox_target_node" {
+  description = "Proxmox Target Node"
+  default     = "pve"
+}
+
 variable "container_ip" {
   description = "Static IP address assigned to the mayl-home LXC container"
   default     = "192.168.178.80/24"

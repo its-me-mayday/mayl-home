@@ -1,5 +1,5 @@
 resource "proxmox_lxc" "mayl_home" {
-  target_node  = "proxmox"
+  target_node  = var.proxmox_target_node
   hostname     = var.container_hostname
   ostemplate   = "local:vztmpl/ubuntu-22.04-standard_22.04-1_amd64.tar.zst"
   password     = "ChangeMe123!"
