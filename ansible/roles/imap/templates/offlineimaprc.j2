@@ -1,0 +1,28 @@
+[general]
+accounts = Gmail
+maxsyncaccounts = 1
+ui = quiet
+
+[Account Gmail]
+localrepository = Local
+remoterepository = Remote
+
+[Repository Local]
+type = Maildir
+localfolders = /home/archiver/emails
+
+[Repository Remote]
+type = IMAP
+remotehost = {{ imap_host }}
+remoteuser = {{ imap_user }}
+remotepass = {{ imap_password }}
+ssl = yes
+sslcacertfile = /etc/ssl/certs/ca-certificates.crt
+maxconnections = 1
+
+# Sync only these folders
+folderfilter = lambda folder: folder in [
+    'INBOX',
+    '[Gmail]/Sent Mail',
+    '[Gmail]/All Mail'
+    ]

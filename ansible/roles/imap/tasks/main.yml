@@ -1,0 +1,26 @@
+---
+- name: Install offlineimap
+  apt:
+    name: offlineimap
+    state: present
+
+- name: Deploy offlineimap config
+  template:
+    src: offlineimaprc.j2
+    dest: /home/archiver/.offlineimaprc
+    owner: archiver
+    group: archiver
+    mode: '0600'
+
+- name: Run initial sync (first time, may take a while)
+  shell: offlineimap -o
+  become_user: archiver
+  async: 300
+  poll: 10
+
+- name: Set up cron job to sync every hour
+  cron:
+    name: "mayl-home imap sync"
+    user: archiver
+    minute: "0"
+    job: "/usr/bin/offlineimap -o -q >> /home/archiver/sync.log 2>&1"
