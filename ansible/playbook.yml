@@ -1,0 +1,16 @@
+---
+- name: Setup mayl-home Email Archiver
+  hosts: mayl_home
+  become: yes
+
+  roles:
+    - role: base
+      tags: base
+    - role: ssh
+      tags: ssh
+    - role: imap
+      tags: imap
+    - role: ollama
+      tags: ollama
+    - role: dashboard
+      tags: dashboard

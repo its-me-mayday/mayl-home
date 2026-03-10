@@ -22,7 +22,7 @@ mayl-home/
 │   ├── variables.tf          # All input variables
 │   ├── outputs.tf            # Output values (IP, hostname)
 │   ├── lxc.tf                # LXC container resource
-│   └── itsmemayday.tfvars    # Secret values (gitignored)
+│   └── itsmemayday.tfvars    # 🔒 Secret values (gitignored)
 ├── ansible/
 │   ├── ansible.cfg           # Ansible configuration
 │   ├── inventory.yml         # Host definitions
@@ -132,6 +132,78 @@ passwd root
 
 ---
 
+## Step 2b — Gmail: Create an App Password
+
+mayl-home connects to Gmail via IMAP using an **App Password** — a dedicated 16-character password that works even with 2-Factor Authentication enabled. You must use this instead of your regular Google password.
+
+### Requirements
+
+- A Google account with **2-Step Verification enabled**
+- If not enabled yet: [myaccount.google.com/security](https://myaccount.google.com/security) → 2-Step Verification → Turn on
+
+### Create the App Password
+
+1. Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
+2. You may be asked to re-enter your Google password
+3. In the **"App name"** field type `mayl-home`
+4. Click **Create**
+5. Google shows a 16-character password like `abcd efgh ijkl mnop` — **copy it immediately**, it won't be shown again
+
+### Enable IMAP on Gmail
+
+1. Open Gmail → Settings (gear icon) → **See all settings**
+2. Go to the **Forwarding and POP/IMAP** tab
+3. Under **IMAP access** → select **Enable IMAP**
+4. Click **Save Changes**
+
+### Your IMAP credentials
+
+```
+imap_host:     imap.gmail.com
+imap_user:     your@gmail.com
+imap_password: abcdefghijklmnop  (app password without spaces)
+```
+
+### Encrypt and store the credentials
+
+```bash
+cd ansible/
+ansible-vault encrypt_string 'imap.gmail.com' --name 'imap_host' --ask-vault-pass
+ansible-vault encrypt_string 'your@gmail.com' --name 'imap_user' --ask-vault-pass
+ansible-vault encrypt_string 'abcdefghijklmnop' --name 'imap_password' --ask-vault-pass
+```
+
+Paste all three outputs into `ansible/group_vars/all.yml`:
+
+```yaml
+ansible_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          (existing value)
+
+imap_host: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          (output from first command)
+
+imap_user: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          (output from second command)
+
+imap_password: !vault |
+          $ANSIBLE_VAULT;1.1;AES256
+          (output from third command)
+```
+
+Verify the credentials are readable:
+
+```bash
+ansible -i inventory.yml all -m debug -a "msg={{ imap_host }}" --ask-vault-pass
+# Expected: "msg": "imap.gmail.com"
+```
+
+> ⚠️ Never commit plain text credentials. All secrets must be vault-encrypted before being added to `group_vars/all.yml`.
+
+---
+
 ## Step 3 — Ansible: Configure the container
 
 ### Encrypt the SSH password
@@ -220,4 +292,10 @@ Click **"Processa nuove email"** to trigger the AI classification.
 
 **Ansible: Permission denied**
 → Make sure you ran `passwd root` from the Proxmox console and updated the vault with the new password
+
+**Gmail: IMAP authentication failed**
+→ Make sure you are using the App Password (not your Google password) and that IMAP is enabled in Gmail settings
+
+**Gmail: App Passwords option not visible**
+→ 2-Step Verification must be active on your Google account before App Passwords appear
 
