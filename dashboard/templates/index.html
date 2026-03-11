@@ -49,7 +49,7 @@
     }
     .delete-bar.visible { display: flex; }
     tr.selected { background: #fff3cd !important; }
-    .sync-info { font-size: 11px; color: #6c757d; word-break: break-all; }
+    .sync-info { font-size: 11px; color: #a6adc8; word-break: break-all; }
     .manually-classified { opacity: 0.7; font-style: italic; font-size: 10px; }
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { background: #3d3d3d; }
@@ -111,7 +111,7 @@
     <div class="delete-bar" id="deleteBar">
       <span id="selectedCount">0 selezionate</span>
       <button class="btn btn-light btn-sm" onclick="deleteSelected(false)">🗑️ Elimina da archivio</button>
-      <button class="btn btn-danger btn-sm border border-white" onclick="confirmDeleteRemote()">💣 Elimina anche da Gmail</button>
+      <button class="btn btn-danger btn-sm border border-white" onclick="confirmDeleteRemote()">📦 Sposta nel cestino Gmail</button>
       <button class="btn btn-outline-light btn-sm ms-auto" onclick="clearSelection()">✕ Annulla</button>
     </div>
 
@@ -138,12 +138,12 @@
           <div class="col-auto">
             <select id="catFilter" class="form-select" onchange="applyFilters()">
               <option value="">Tutte le categorie</option>
-              <option value="useful"      {% if category=='useful'      %}selected{% endif %}>✅ Useful</option>
-              <option value="work"        {% if category=='work'        %}selected{% endif %}>💼 Work</option>
-              <option value="personal"    {% if category=='personal'    %}selected{% endif %}>👤 Personal</option>
-              <option value="newsletter"  {% if category=='newsletter'  %}selected{% endif %}>📰 Newsletter</option>
-              <option value="spam"        {% if category=='spam'        %}selected{% endif %}>🚫 Spam</option>
-              <option value="other"       {% if category=='other'       %}selected{% endif %}>📁 Other</option>
+              <option value="useful"     {% if category=='useful'     %}selected{% endif %}>✅ Useful</option>
+              <option value="work"       {% if category=='work'       %}selected{% endif %}>💼 Work</option>
+              <option value="personal"   {% if category=='personal'   %}selected{% endif %}>👤 Personal</option>
+              <option value="newsletter" {% if category=='newsletter' %}selected{% endif %}>📰 Newsletter</option>
+              <option value="spam"       {% if category=='spam'       %}selected{% endif %}>🚫 Spam</option>
+              <option value="other"      {% if category=='other'      %}selected{% endif %}>📁 Other</option>
             </select>
           </div>
           <div class="col-auto">
@@ -236,16 +236,16 @@
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header bg-danger text-white">
-        <h5 class="modal-title">⚠️ Eliminazione permanente da Gmail</h5>
+        <h5 class="modal-title">📦 Sposta nel cestino Gmail</h5>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p>Stai per eliminare <strong id="modalCount">0</strong> email direttamente da Gmail.</p>
-        <p class="text-danger fw-bold">Operazione irreversibile — bypass del cestino.</p>
+        <p>Stai per spostare <strong id="modalCount">0</strong> email nel cestino di Gmail.</p>
+        <p class="text-muted">Gmail le eliminerà automaticamente dopo 30 giorni.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
-        <button type="button" class="btn btn-danger" onclick="deleteSelected(true)">💣 Sì, elimina definitivamente</button>
+        <button type="button" class="btn btn-danger" onclick="deleteSelected(true)">📦 Sì, sposta nel cestino</button>
       </div>
     </div>
   </div>
@@ -410,19 +410,52 @@ function deleteSelected(deleteRemote) {
   if (modal) modal.hide();
   const ids = Array.from(selectedIds);
   if (!ids.length) return;
-  showResult('warning', `🗑️ Eliminazione di ${ids.length} email in corso...`);
+
+  const label = deleteRemote
+    ? `📦 Spostando ${ids.length} email nel cestino Gmail...`
+    : `🗑️ Eliminando ${ids.length} email dall'archivio...`;
+
+  showResult('warning', `${label}
+    <div class="progress mt-2" style="height:6px">
+      <div class="progress-bar progress-bar-striped progress-bar-animated bg-warning"
+        id="deleteProgress" style="width:0%"></div>
+    </div>
+    <div id="deleteProgressText" class="small mt-1">0 / ${ids.length}</div>`);
+
   fetch('/delete', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ids, delete_remote: deleteRemote })
   }).then(r => r.json()).then(d => {
     if (d.error) { showResult('danger', `❌ ${d.error}`); return; }
-    let msg = `✅ ${d.local_deleted} email eliminate dall'archivio`;
-    if (deleteRemote) msg += ` — ${d.remote_deleted} eliminate da Gmail${d.remote_errors > 0 ? ` (${d.remote_errors} errori)` : ''}`;
-    showResult('success', msg);
     clearSelection();
-    setTimeout(() => location.reload(), 2000);
+    pollDeleteStatus(ids.length, deleteRemote);
   }).catch(() => showResult('danger', '❌ Errore di connessione'));
+}
+
+function pollDeleteStatus(total, deleteRemote) {
+  const interval = setInterval(() => {
+    fetch('/delete-status').then(r => r.json()).then(d => {
+      const pct = total > 0 ? Math.round((d.deleted / total) * 100) : 0;
+      const bar = document.getElementById('deleteProgress');
+      const text = document.getElementById('deleteProgressText');
+      if (bar) bar.style.width = pct + '%';
+      if (text) {
+        let t = `${d.deleted} / ${total}`;
+        if (deleteRemote) t += ` — ${d.remote_deleted} su Gmail`;
+        if (d.remote_errors > 0) t += ` (${d.remote_errors} errori)`;
+        text.textContent = t;
+      }
+      if (!d.running) {
+        clearInterval(interval);
+        let msg = `✅ ${d.deleted} email eliminate dall'archivio`;
+        if (deleteRemote) msg += ` — ${d.remote_deleted} spostate nel cestino Gmail`;
+        if (d.remote_errors > 0) msg += ` (${d.remote_errors} errori)`;
+        showResult('success', msg);
+        setTimeout(() => location.reload(), 2000);
+      }
+    });
+  }, 1000);
 }
 
 // ── Processing ────────────────────────────────────────────

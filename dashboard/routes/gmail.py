@@ -23,7 +23,7 @@ def delete_messages(message_ids: list) -> tuple:
     try:
         mail = imaplib.IMAP4_SSL(IMAP_HOST)
         mail.login(IMAP_USER, IMAP_PASSWORD)
-        print(f'[Gmail] Login OK')
+        print('[Gmail] Login OK')
 
         all_mail, trash = _get_folders(mail)
         print(f'[Gmail] All Mail: {all_mail} | Trash: {trash}')
@@ -44,6 +44,7 @@ def delete_messages(message_ids: list) -> tuple:
                 clean_id = msg_id.strip().replace('"', '\\"')
                 _, data = mail.uid('search', None, f'HEADER Message-ID "{clean_id}"')
                 if not data[0]:
+                    print(f'[Gmail] UID not found: {clean_id[:60]}')
                     errors += 1
                     continue
                 for uid in data[0].split():
@@ -51,22 +52,14 @@ def delete_messages(message_ids: list) -> tuple:
                         mail.uid('copy', uid, f'"{trash}"')
                     mail.uid('store', uid, '+FLAGS', '\\Deleted')
                 mail.expunge()
+                print(f'[Gmail] Moved to trash: {clean_id[:60]}')
                 deleted += 1
             except Exception as e:
                 print(f'[Gmail] Error on {msg_id[:50]}: {e}')
                 errors += 1
 
-        try:
-            if trash:
-                mail.select(f'"{trash}"')
-                mail.store('1:*', '+FLAGS', '\\Deleted')
-                mail.expunge()
-                print('[Gmail] Trash emptied')
-        except Exception as e:
-            print(f'[Gmail] Trash error: {e}')
-
         mail.logout()
-        print(f'[Gmail] Done: {deleted} deleted, {errors} errors')
+        print(f'[Gmail] Done: {deleted} moved to trash, {errors} errors')
 
     except Exception as e:
         print(f'[Gmail] Fatal error: {e}')
