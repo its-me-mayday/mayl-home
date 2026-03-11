@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, jsonify
-import sqlite3, os, mailbox, threading, imaplib
+import sqlite3, os, mailbox, threading, imaplib, time
 
 app = Flask(__name__)
 DB_PATH = '/home/archiver/archive.db'
@@ -11,6 +11,8 @@ processing_status = {
     'errors': 0,
     'total': 0
 }
+
+_maildir_cache = {'count': 0, 'last_updated': 0}
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -35,6 +37,26 @@ def init_db():
     conn.commit()
     return conn
 
+def count_maildir():
+    global _maildir_cache
+    now = time.time()
+    if now - _maildir_cache['last_updated'] < 60:
+        return _maildir_cache['count']
+    total = 0
+    for folder_name in os.listdir(MAILDIR):
+        folder_path = os.path.join(MAILDIR, folder_name)
+        if not os.path.isdir(folder_path):
+            continue
+        try:
+            for sub in ['cur', 'new']:
+                sub_path = os.path.join(folder_path, sub)
+                if os.path.isdir(sub_path):
+                    total += len(os.listdir(sub_path))
+        except Exception:
+            pass
+    _maildir_cache = {'count': total, 'last_updated': now}
+    return total
+
 def delete_from_gmail(message_ids: list) -> tuple:
     deleted = 0
     errors = 0
@@ -47,7 +69,6 @@ def delete_from_gmail(message_ids: list) -> tuple:
         mail.login(imap_user, imap_pass)
         print(f'[Gmail] Login OK')
 
-        # Auto-detect folder names by attribute
         _, folders = mail.list()
         all_mail_folder = None
         trash_folder = None
@@ -58,7 +79,6 @@ def delete_from_gmail(message_ids: list) -> tuple:
             folder_name = parts[-2] if len(parts) >= 2 else None
             if not folder_name:
                 continue
-            # Strip any remaining quotes
             folder_name = folder_name.strip('"').strip()
             if '\\All' in decoded:
                 all_mail_folder = folder_name
@@ -119,16 +139,7 @@ def process_emails_background():
     processing_status = {'running': True, 'processed': 0, 'errors': 0, 'total': 0}
     conn = init_db()
 
-    total = 0
-    for folder_name in os.listdir(MAILDIR):
-        folder_path = os.path.join(MAILDIR, folder_name)
-        if not os.path.isdir(folder_path):
-            continue
-        try:
-            mbox = mailbox.Maildir(folder_path)
-            total += sum(1 for _ in mbox)
-        except Exception:
-            pass
+    total = count_maildir()
     processing_status['total'] = total
 
     for folder_name in os.listdir(MAILDIR):
@@ -243,6 +254,38 @@ def process_emails():
 @app.route('/status')
 def status():
     return jsonify(processing_status)
+
+@app.route('/stats')
+def stats():
+    conn = init_db()
+    total_archived = conn.execute('SELECT COUNT(*) FROM emails').fetchone()[0]
+    total_maildir = count_maildir()
+    unprocessed = max(0, total_maildir - total_archived)
+
+    categories = conn.execute('''
+        SELECT category, COUNT(*) as count
+        FROM emails GROUP BY category ORDER BY count DESC
+    ''').fetchall()
+
+    last_sync = None
+    try:
+        with open('/home/archiver/sync.log', 'r') as f:
+            lines = f.readlines()
+            for line in reversed(lines):
+                if line.strip():
+                    last_sync = line.strip()[-50:]
+                    break
+    except Exception:
+        last_sync = 'N/A'
+
+    return jsonify({
+        'total_archived': total_archived,
+        'total_maildir': total_maildir,
+        'unprocessed': unprocessed,
+        'processing': processing_status,
+        'last_sync': last_sync,
+        'categories': [{'name': r['category'], 'count': r['count']} for r in categories]
+    })
 
 @app.route('/smart-select', methods=['POST'])
 def smart_select():

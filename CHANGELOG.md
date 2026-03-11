@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-03-11
+
+### Added
+
+- **Sidebar HUD** — fixed left sidebar with real-time system statistics, updates every 5 seconds
+- **Processing indicator** — animated pulsing dot shows when AI classification is active, with live progress bar and counter (processed / total)
+- **Archive stats** — total archived emails, total in maildir, and unprocessed count always visible
+- **Per-category counters** — clickable category list in sidebar, click to filter the table directly
+- **Last IMAP sync** — shows last line from sync.log so you always know when emails were last fetched
+- **Maildir cache** — maildir file count cached for 60 seconds to avoid scanning 19000+ files on every request
+- **Fast maildir counting** — switched from `mailbox.Maildir` to `os.listdir` on cur/new folders, dramatically faster on large mailboxes
+
+### Changed
+
+- `/stats` endpoint now responds in milliseconds instead of seconds
+- `process_emails_background` now uses cached maildir count for total estimation
+- Layout changed from single column to two-column (sidebar + main content)
+
+
 ## [1.1.0] - 2026-03-11
 
 ### Added
