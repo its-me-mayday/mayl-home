@@ -9,6 +9,9 @@ ExecStart=/home/archiver/venv/bin/python main.py
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+Environment=IMAP_HOST={{ imap_host }}
+Environment=IMAP_USER={{ imap_user }}
+Environment=IMAP_PASSWORD={{ imap_password }}
 
 [Install]
 WantedBy=multi-user.target

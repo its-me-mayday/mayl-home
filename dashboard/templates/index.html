@@ -17,15 +17,43 @@
     .priority-high { color: #dc3545; font-weight: bold; }
     .priority-medium { color: #fd7e14; }
     .priority-low { color: #6c757d; }
+    .delete-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #dc3545;
+      color: white;
+      padding: 10px 20px;
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    .delete-bar.visible { display: flex; }
+    tr.selected { background: #fff3cd !important; }
   </style>
 </head>
 <body>
+
 <nav class="navbar navbar-dark mb-4">
   <div class="container">
     <span class="navbar-brand fw-bold">📬 mayl-home</span>
     <span class="text-white-50">{{ total }} email archiviate</span>
   </div>
 </nav>
+
+<!-- Delete bar (appears when emails are selected) -->
+<div class="delete-bar" id="deleteBar">
+  <span id="selectedCount">0 selezionate</span>
+  <button class="btn btn-light btn-sm" onclick="deleteSelected(false)">
+    🗑️ Elimina da archivio
+  </button>
+  <button class="btn btn-danger btn-sm border border-white" onclick="confirmDeleteRemote()">
+    💣 Elimina anche da Gmail
+  </button>
+  <button class="btn btn-outline-light btn-sm ms-auto" onclick="clearSelection()">
+    ✕ Annulla
+  </button>
+</div>
 
 <div class="container">
 
@@ -48,6 +76,25 @@
           <button id="processBtn" onclick="processEmails()" class="btn btn-primary">
             🤖 Processa nuove email
           </button>
+        </div>
+        <div class="col-auto">
+          <div class="dropdown">
+            <button class="btn btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">
+              🧠 Selezione intelligente
+            </button>
+            <ul class="dropdown-menu">
+              <li>
+                <a class="dropdown-item" href="#" onclick="smartSelect('spam')">
+                  🚫 Seleziona tutto lo spam
+                </a>
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" onclick="smartSelect('newsletter')">
+                  📰 Seleziona tutte le newsletter
+                </a>
+              </li>
+            </ul>
+          </div>
         </div>
         <div class="col">
           <input type="text" id="search" class="form-control"
@@ -87,6 +134,9 @@
       <table class="table table-hover mb-0">
         <thead class="table-dark">
           <tr>
+            <th>
+              <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)">
+            </th>
             <th>Data</th>
             <th>Mittente</th>
             <th>Oggetto</th>
@@ -98,7 +148,11 @@
         </thead>
         <tbody id="emailTable">
         {% for e in emails %}
-          <tr>
+          <tr data-id="{{ e['id'] }}">
+            <td>
+              <input type="checkbox" class="email-cb" value="{{ e['id'] }}"
+                onchange="onCheckboxChange()">
+            </td>
             <td class="text-nowrap">{{ e['date'][:16] if e['date'] else '-' }}</td>
             <td>{{ e['sender'][:30] if e['sender'] else '-' }}</td>
             <td>{{ e['subject'][:60] if e['subject'] else '(no subject)' }}</td>
@@ -121,7 +175,35 @@
 
 </div>
 
+<!-- Confirm modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title">⚠️ Eliminazione permanente da Gmail</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Stai per eliminare <strong id="modalCount">0</strong> email direttamente da Gmail.</p>
+        <p class="text-danger fw-bold">Questa operazione è irreversibile — le email verranno eliminate definitivamente, bypassando il cestino.</p>
+        <p>Sei sicuro?</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+        <button type="button" class="btn btn-danger" onclick="deleteSelected(true)">
+          💣 Sì, elimina definitivamente
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+let selectedIds = new Set();
+let refreshInterval = null;
+
+// ── Filters ──────────────────────────────────────────────
 function applyFilters() {
   const search = document.getElementById('search').value;
   const cat = document.getElementById('catFilter').value;
@@ -129,8 +211,108 @@ function applyFilters() {
   window.location = `/?search=${search}&category=${cat}&priority=${pri}`;
 }
 
-let refreshInterval = null;
+// ── Selection ─────────────────────────────────────────────
+function onCheckboxChange() {
+  selectedIds.clear();
+  document.querySelectorAll('.email-cb:checked').forEach(cb => {
+    selectedIds.add(parseInt(cb.value));
+    cb.closest('tr').classList.add('selected');
+  });
+  document.querySelectorAll('.email-cb:not(:checked)').forEach(cb => {
+    cb.closest('tr').classList.remove('selected');
+  });
+  updateDeleteBar();
+}
 
+function toggleSelectAll(master) {
+  document.querySelectorAll('.email-cb').forEach(cb => {
+    cb.checked = master.checked;
+  });
+  onCheckboxChange();
+}
+
+function clearSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.email-cb').forEach(cb => cb.checked = false);
+  document.getElementById('selectAll').checked = false;
+  document.querySelectorAll('tr.selected').forEach(tr => tr.classList.remove('selected'));
+  updateDeleteBar();
+}
+
+function updateDeleteBar() {
+  const bar = document.getElementById('deleteBar');
+  const count = document.getElementById('selectedCount');
+  if (selectedIds.size > 0) {
+    bar.classList.add('visible');
+    count.textContent = `${selectedIds.size} selezionate`;
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+// ── Smart select ──────────────────────────────────────────
+function smartSelect(mode) {
+  fetch('/smart-select', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.error) { alert(d.error); return; }
+    selectedIds = new Set(d.ids);
+    // Check visible checkboxes that match
+    document.querySelectorAll('.email-cb').forEach(cb => {
+      if (selectedIds.has(parseInt(cb.value))) {
+        cb.checked = true;
+        cb.closest('tr').classList.add('selected');
+      } else {
+        cb.checked = false;
+        cb.closest('tr').classList.remove('selected');
+      }
+    });
+    updateDeleteBar();
+    showResult('info', `🧠 ${d.count} email selezionate (${mode})`);
+  });
+}
+
+// ── Delete ────────────────────────────────────────────────
+function confirmDeleteRemote() {
+  document.getElementById('modalCount').textContent = selectedIds.size;
+  new bootstrap.Modal(document.getElementById('confirmModal')).show();
+}
+
+function deleteSelected(deleteRemote) {
+  // Close modal if open
+  const modal = bootstrap.Modal.getInstance(document.getElementById('confirmModal'));
+  if (modal) modal.hide();
+
+  const ids = Array.from(selectedIds);
+  if (!ids.length) return;
+
+  showResult('warning', `🗑️ Eliminazione di ${ids.length} email in corso...`);
+
+  fetch('/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, delete_remote: deleteRemote })
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.error) { showResult('danger', `❌ Errore: ${d.error}`); return; }
+    let msg = `✅ ${d.local_deleted} email eliminate dall'archivio`;
+    if (deleteRemote) {
+      msg += ` — ${d.remote_deleted} eliminate da Gmail`;
+      if (d.remote_errors > 0) msg += ` (${d.remote_errors} errori)`;
+    }
+    showResult('success', msg);
+    clearSelection();
+    setTimeout(() => location.reload(), 2000);
+  })
+  .catch(() => showResult('danger', '❌ Errore di connessione'));
+}
+
+// ── Processing ────────────────────────────────────────────
 function processEmails() {
   const btn = document.getElementById('processBtn');
   btn.disabled = true;
@@ -153,13 +335,8 @@ function pollStatus() {
   fetch('/status')
     .then(r => r.json())
     .then(d => {
-      const res = document.getElementById('result');
-      res.classList.remove('d-none');
-
       if (d.running) {
-        res.className = 'alert alert-info mb-3';
-        res.innerHTML = `⏳ Processing... ${d.processed} classificate su ${d.total} totali, ${d.errors} errori`;
-
+        showResult('info', `⏳ Processing... ${d.processed} classificate su ${d.total} totali, ${d.errors} errori`);
         fetch('/').then(r => r.text()).then(html => {
           const parser = new DOMParser();
           const doc = parser.parseFromString(html, 'text/html');
@@ -170,13 +347,19 @@ function pollStatus() {
         });
       } else {
         clearInterval(refreshInterval);
-        res.className = 'alert alert-success mb-3';
-        res.innerHTML = `✅ Completato! ${d.processed} email classificate, ${d.errors} errori`;
+        showResult('success', `✅ Completato! ${d.processed} email classificate, ${d.errors} errori`);
         document.getElementById('processBtn').disabled = false;
         document.getElementById('processBtn').innerHTML = '🤖 Processa nuove email';
         setTimeout(() => location.reload(), 2000);
       }
     });
+}
+
+// ── Utils ─────────────────────────────────────────────────
+function showResult(type, msg) {
+  const res = document.getElementById('result');
+  res.className = `alert alert-${type} mb-3`;
+  res.innerHTML = msg;
 }
 </script>
 </body>
