@@ -80,6 +80,33 @@ def index():
     )
 
 
+@bp.route('/backfill', methods=['POST'])
+def backfill():
+    """Ricalcola date_ts per tutte le email — endpoint temporaneo."""
+    from email.utils import parsedate_to_datetime
+    conn = init_db()
+    try:
+        conn.execute('ALTER TABLE emails ADD COLUMN date_ts INTEGER')
+        conn.commit()
+    except Exception:
+        pass  # colonna già esistente
+    rows = conn.execute('SELECT id, date FROM emails WHERE date_ts IS NULL').fetchall()
+    updated = 0
+    failed = 0
+    for row in rows:
+        try:
+            ts = int(parsedate_to_datetime(row['date']).timestamp()) if row['date'] else None
+        except Exception:
+            ts = None
+        if ts:
+            conn.execute('UPDATE emails SET date_ts = ? WHERE id = ?', (ts, row['id']))
+            updated += 1
+        else:
+            failed += 1
+    conn.commit()
+    return jsonify({'updated': updated, 'failed': failed})
+
+
 @bp.route('/stats')
 def stats():
     conn = init_db()

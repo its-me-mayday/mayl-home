@@ -299,6 +299,10 @@
             <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
               🧠 Selezione intelligente
             </button>
+          <div class="vr mx-1"></div>
+          <button class="btn btn-outline-warning btn-sm" onclick="runBackfill()" id="backfillBtn" title="Ricalcola date_ts per tutte le email">
+            🔄 Sync date
+          </button>
             <ul class="dropdown-menu">
               <li><a class="dropdown-item" href="#" onclick="smartSelect('spam')">🚫 Seleziona tutto lo spam</a></li>
               <li><a class="dropdown-item" href="#" onclick="smartSelect('newsletter')">📰 Seleziona tutte le newsletter</a></li>
@@ -491,11 +495,12 @@ function toggleSidebar() {
   sidebar.classList.toggle('collapsed');
   localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
 }
-// Ripristina stato sidebar
+// Ripristina stato sidebar — default: aperta
 (function() {
   if (localStorage.getItem('sidebarCollapsed') === 'true') {
     document.querySelector('.sidebar')?.classList.add('collapsed');
   }
+  // Se non c'è nessun valore salvato, la sidebar è aperta (default)
 })();
 
 // ── Tooltip init ──────────────────────────────────────────
@@ -833,6 +838,26 @@ function processEmails() {
     btn.disabled  = false;
     btn.innerHTML = '🤖 Processa nuove email';
   });
+}
+
+// ── Backfill ──────────────────────────────────────────────
+function runBackfill() {
+  const btn = document.getElementById('backfillBtn');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ In corso...';
+  fetch('/backfill', { method: 'POST' })
+    .then(r => r.json())
+    .then(d => {
+      if (d.error) { showResult('danger', '❌ ' + d.error); }
+      else { showResult('success', `✅ Backfill completato — ${d.updated} email aggiornate, ${d.failed} non parsabili`); }
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Sync date';
+    })
+    .catch(() => {
+      showResult('danger', '❌ Errore di connessione');
+      btn.disabled = false;
+      btn.innerHTML = '🔄 Sync date';
+    });
 }
 
 // ── Clear filters ────────────────────────────────────────
