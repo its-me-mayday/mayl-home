@@ -246,46 +246,57 @@
       <button class="btn btn-outline-light btn-sm ms-auto" onclick="clearSelection()">✕ Annulla</button>
     </div>
 
-    <!-- Filters -->
+    <!-- Toolbar -->
     <div class="card mb-4 shadow-sm">
-      <div class="card-body">
-        <div class="row g-2 align-items-center">
-          <div class="col-auto">
-            <button id="processBtn" onclick="processEmails()" class="btn btn-primary">🤖 Processa nuove email</button>
-          </div>
-          <div class="col-auto">
-            <div class="dropdown">
-              <button class="btn btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">🧠 Selezione intelligente</button>
-              <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="#" onclick="smartSelect('spam')">🚫 Seleziona tutto lo spam</a></li>
-                <li><a class="dropdown-item" href="#" onclick="smartSelect('newsletter')">📰 Seleziona tutte le newsletter</a></li>
-              </ul>
-            </div>
-          </div>
-          <div class="col">
-            <input type="text" id="search" class="form-control" placeholder="Cerca per oggetto, mittente..."
-              value="{{ search }}" onkeydown="if(event.key==='Enter') applyFilters()">
-          </div>
-          <div class="col-auto">
-            <select id="catFilter" class="form-select" onchange="applyFilters()">
-              <option value="">Tutte le categorie</option>
-              <option value="useful"     {% if category=='useful'     %}selected{% endif %}>✅ Useful</option>
-              <option value="work"       {% if category=='work'       %}selected{% endif %}>💼 Work</option>
-              <option value="personal"   {% if category=='personal'   %}selected{% endif %}>👤 Personal</option>
-              <option value="newsletter" {% if category=='newsletter' %}selected{% endif %}>📰 Newsletter</option>
-              <option value="spam"       {% if category=='spam'       %}selected{% endif %}>🚫 Spam</option>
-              <option value="other"      {% if category=='other'      %}selected{% endif %}>📁 Other</option>
-            </select>
-          </div>
-          <div class="col-auto">
-            <select id="priFilter" class="form-select" onchange="applyFilters()">
-              <option value="">Tutte le priorità</option>
-              <option value="high"   {% if priority=='high'   %}selected{% endif %}>🔴 High</option>
-              <option value="medium" {% if priority=='medium' %}selected{% endif %}>🟡 Medium</option>
-              <option value="low"    {% if priority=='low'    %}selected{% endif %}>🟢 Low</option>
-            </select>
+      <div class="card-body py-2 px-3">
+
+        <!-- Riga azioni -->
+        <div class="d-flex align-items-center gap-2 mb-2 pb-2" style="border-bottom:1px solid #f0f0f0">
+          <button id="processBtn" onclick="processEmails()" class="btn btn-primary btn-sm">
+            🤖 Processa email
+          </button>
+          <div class="vr mx-1"></div>
+          <div class="dropdown">
+            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+              🧠 Selezione intelligente
+            </button>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="#" onclick="smartSelect('spam')">🚫 Seleziona tutto lo spam</a></li>
+              <li><a class="dropdown-item" href="#" onclick="smartSelect('newsletter')">📰 Seleziona tutte le newsletter</a></li>
+            </ul>
           </div>
         </div>
+
+        <!-- Riga filtri -->
+        <div class="d-flex align-items-center gap-2">
+          <div class="input-group input-group-sm flex-grow-1" style="max-width:400px">
+            <span class="input-group-text bg-white border-end-0">🔍</span>
+            <input type="text" id="search" class="form-control border-start-0 ps-0"
+              placeholder="Cerca oggetto, mittente..."
+              value="{{ search }}"
+              onkeydown="if(event.key==='Enter') applyFilters()"
+              style="font-size:13px">
+          </div>
+          <select id="catFilter" class="form-select form-select-sm" style="width:auto" onchange="applyFilters()">
+            <option value="">Tutte le categorie</option>
+            <option value="useful"     {% if category=='useful'     %}selected{% endif %}>✅ Useful</option>
+            <option value="work"       {% if category=='work'       %}selected{% endif %}>💼 Work</option>
+            <option value="personal"   {% if category=='personal'   %}selected{% endif %}>👤 Personal</option>
+            <option value="newsletter" {% if category=='newsletter' %}selected{% endif %}>📰 Newsletter</option>
+            <option value="spam"       {% if category=='spam'       %}selected{% endif %}>🚫 Spam</option>
+            <option value="other"      {% if category=='other'      %}selected{% endif %}>📁 Other</option>
+          </select>
+          <select id="priFilter" class="form-select form-select-sm" style="width:auto" onchange="applyFilters()">
+            <option value="">Tutte le priorità</option>
+            <option value="high"   {% if priority=='high'   %}selected{% endif %}>🔴 High</option>
+            <option value="medium" {% if priority=='medium' %}selected{% endif %}>🟡 Medium</option>
+            <option value="low"    {% if priority=='low'    %}selected{% endif %}>🟢 Low</option>
+          </select>
+          {% if search or category or priority %}
+          <button class="btn btn-outline-danger btn-sm" onclick="clearFilters()">✕ Reset</button>
+          {% endif %}
+        </div>
+
       </div>
     </div>
 
@@ -751,6 +762,11 @@ function processEmails() {
     btn.disabled  = false;
     btn.innerHTML = '🤖 Processa nuove email';
   });
+}
+
+// ── Clear filters ────────────────────────────────────────
+function clearFilters() {
+  window.location = '/';
 }
 
 // ── Utils ─────────────────────────────────────────────────
