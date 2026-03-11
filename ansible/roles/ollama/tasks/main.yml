@@ -1,0 +1,25 @@
+---
+- name: Install Ollama
+  shell: curl -fsSL https://ollama.ai/install.sh | sh
+  args:
+    creates: /usr/local/bin/ollama
+
+- name: Enable and start Ollama service
+  systemd:
+    name: ollama
+    enabled: yes
+    state: started
+
+- name: Wait for Ollama to be ready
+  uri:
+    url: http://localhost:11434/api/tags
+    method: GET
+  register: result
+  retries: 10
+  delay: 5
+  until: result.status == 200
+
+- name: Pull Llama 3.2 3B model
+  shell: ollama pull llama3.2:3b
+  async: 600
+  poll: 15

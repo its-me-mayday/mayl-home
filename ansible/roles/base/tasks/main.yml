@@ -18,6 +18,7 @@
       - git
       - sqlite3
       - ca-certificates
+      - zstd
     state: present
 
 - name: Create archiver user
