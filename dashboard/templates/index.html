@@ -7,16 +7,38 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     body { background: #f0f2f5; margin: 0; }
-    .navbar { background: #1a1a2e !important; }
-    .app-layout { display: flex; min-height: calc(100vh - 56px); }
 
-    /* ── Sidebar ── */
+    /* ── Semaforo navbar ── */
+    .nav-traffic-light {
+      display: flex; gap: 5px; align-items: center;
+      background: #0d0d1a; border-radius: 20px;
+      padding: 4px 8px;
+    }
+    .tl-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #2a2a3a; transition: background 0.4s, box-shadow 0.4s;
+      display: inline-block;
+    }
+    .tl-dot.on-red    { background: #f38ba8; box-shadow: 0 0 6px #f38ba8; }
+    .tl-dot.on-yellow { background: #f9e2af; box-shadow: 0 0 6px #f9e2af; }
+    .tl-dot.on-green  { background: #a6e3a1; box-shadow: 0 0 6px #a6e3a1; }
+
+    /* ── Sidebar collassabile ── */
     .sidebar {
       width: 280px; min-width: 280px; background: #1e1e2e;
       color: #cdd6f4; padding: 20px 16px;
       position: sticky; top: 0;
       height: calc(100vh - 56px); overflow-y: auto;
+      transition: width 0.25s ease, min-width 0.25s ease, padding 0.25s ease;
     }
+    .sidebar.collapsed {
+      width: 0; min-width: 0; padding: 0;
+      overflow: hidden;
+    }
+    .navbar { background: #1a1a2e !important; }
+    .app-layout { display: flex; min-height: calc(100vh - 56px); }
+
+    /* ── Sidebar ── */
     .sidebar h6 {
       color: #89b4fa; font-size: 11px; text-transform: uppercase;
       letter-spacing: 1.5px; margin: 20px 0 8px;
@@ -153,8 +175,25 @@
 
 <nav class="navbar navbar-dark">
   <div class="container-fluid px-3">
-    <span class="navbar-brand fw-bold">📬 mayl-home</span>
-    <span class="text-white-50 small">Email Archiver AI</span>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm p-1 lh-1" id="sidebarToggle" onclick="toggleSidebar()"
+        style="color:#cdd6f4;background:transparent;border:1px solid #45475a;border-radius:6px;font-size:18px;line-height:1;width:32px;height:32px">
+        ☰
+      </button>
+      <span class="navbar-brand fw-bold mb-0">📬 mayl-home</span>
+    </div>
+    <div class="d-flex align-items-center gap-3">
+      <!-- Semaforo stato sistema -->
+      <div class="d-flex align-items-center gap-2" id="navStatus">
+        <div class="nav-traffic-light">
+          <span class="tl-dot" id="tlRed"   title="Errori processor"></span>
+          <span class="tl-dot" id="tlYellow" title="Processing in corso..."></span>
+          <span class="tl-dot" id="tlGreen"  title="Sistema OK"></span>
+        </div>
+        <span id="navStatusLabel" class="text-white-50 small">—</span>
+      </div>
+      <span class="text-white-50 small d-none d-md-inline">Email Archiver AI</span>
+    </div>
   </div>
 </nav>
 
@@ -446,6 +485,19 @@
 let selectedIds = new Set();
 const CAT_ICONS = { useful:'✅', work:'💼', personal:'👤', newsletter:'📰', spam:'🚫', other:'📁' };
 
+// ── Sidebar toggle ───────────────────────────────────────
+function toggleSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  sidebar.classList.toggle('collapsed');
+  localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+}
+// Ripristina stato sidebar
+(function() {
+  if (localStorage.getItem('sidebarCollapsed') === 'true') {
+    document.querySelector('.sidebar')?.classList.add('collapsed');
+  }
+})();
+
 // ── Tooltip init ──────────────────────────────────────────
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
   new bootstrap.Tooltip(el, { placement: 'right' });
@@ -568,6 +620,25 @@ function updateHUD() {
       } else {
         lastRunInfo.style.display = 'none';
       }
+    }
+
+    // Semaforo navbar
+    const tlRed    = document.getElementById('tlRed');
+    const tlYellow = document.getElementById('tlYellow');
+    const tlGreen  = document.getElementById('tlGreen');
+    const navLabel = document.getElementById('navStatusLabel');
+    tlRed.className    = 'tl-dot';
+    tlYellow.className = 'tl-dot';
+    tlGreen.className  = 'tl-dot';
+    if (d.processing.running) {
+      tlYellow.className = 'tl-dot on-yellow';
+      navLabel.textContent = `Processing… ${d.processing.processed.toLocaleString()} / ${d.processing.total.toLocaleString()}`;
+    } else if (d.processing.last_run_errors > 5) {
+      tlRed.className = 'tl-dot on-red';
+      navLabel.textContent = `${d.processing.last_run_errors} errori`;
+    } else {
+      tlGreen.className = 'tl-dot on-green';
+      navLabel.textContent = `${d.total_archived.toLocaleString()} archiviate`;
     }
 
     document.getElementById('hudCategories').innerHTML = d.categories.map(c => `
