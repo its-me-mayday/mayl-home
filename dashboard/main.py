@@ -1,10 +1,17 @@
 from flask import Flask, render_template, request, jsonify
-import sqlite3, os, mailbox
+import sqlite3, os, mailbox, threading
 from classifier import classify_email
 
 app = Flask(__name__)
 DB_PATH = '/home/archiver/archive.db'
 MAILDIR = '/home/archiver/emails'
+
+processing_status = {
+    'running': False,
+    'processed': 0,
+    'errors': 0,
+    'total': 0
+}
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
@@ -29,48 +36,22 @@ def init_db():
     conn.commit()
     return conn
 
-@app.route('/')
-def index():
+def process_emails_background():
+    global processing_status
+    processing_status = {'running': True, 'processed': 0, 'errors': 0, 'total': 0}
     conn = init_db()
-    category = request.args.get('category', '')
-    priority = request.args.get('priority', '')
-    search = request.args.get('search', '')
 
-    query = 'SELECT * FROM emails WHERE 1=1'
-    params = []
-
-    if category:
-        query += ' AND category = ?'
-        params.append(category)
-    if priority:
-        query += ' AND priority = ?'
-        params.append(priority)
-    if search:
-        query += ' AND (subject LIKE ? OR sender LIKE ? OR summary LIKE ?)'
-        params.extend([f'%{search}%'] * 3)
-
-    query += ' ORDER BY date DESC LIMIT 100'
-    emails = conn.execute(query, params).fetchall()
-    total = conn.execute('SELECT COUNT(*) FROM emails').fetchone()[0]
-    stats = conn.execute('''
-        SELECT category, COUNT(*) as count
-        FROM emails GROUP BY category
-    ''').fetchall()
-
-    return render_template('index.html',
-        emails=emails,
-        category=category,
-        priority=priority,
-        search=search,
-        total=total,
-        stats=stats
-    )
-
-@app.route('/process', methods=['POST'])
-def process_emails():
-    processed = 0
-    errors = 0
-    conn = init_db()
+    total = 0
+    for folder_name in os.listdir(MAILDIR):
+        folder_path = os.path.join(MAILDIR, folder_name)
+        if not os.path.isdir(folder_path):
+            continue
+        try:
+            mbox = mailbox.Maildir(folder_path)
+            total += sum(1 for _ in mbox)
+        except Exception:
+            pass
+    processing_status['total'] = total
 
     for folder_name in os.listdir(MAILDIR):
         folder_path = os.path.join(MAILDIR, folder_name)
@@ -126,12 +107,63 @@ def process_emails():
                     1 if result.get('action_required') else 0
                 ))
                 conn.commit()
-                processed += 1
+                processing_status['processed'] += 1
             except Exception as e:
-                errors += 1
+                processing_status['errors'] += 1
                 print(f'Error classifying {subject}: {e}')
 
-    return jsonify({'processed': processed, 'errors': errors})
+    processing_status['running'] = False
+
+@app.route('/')
+def index():
+    conn = init_db()
+    category = request.args.get('category', '')
+    priority = request.args.get('priority', '')
+    search = request.args.get('search', '')
+
+    query = 'SELECT * FROM emails WHERE 1=1'
+    params = []
+
+    if category:
+        query += ' AND category = ?'
+        params.append(category)
+    if priority:
+        query += ' AND priority = ?'
+        params.append(priority)
+    if search:
+        query += ' AND (subject LIKE ? OR sender LIKE ? OR summary LIKE ?)'
+        params.extend([f'%{search}%'] * 3)
+
+    query += ' ORDER BY date DESC LIMIT 100'
+    emails = conn.execute(query, params).fetchall()
+    total = conn.execute('SELECT COUNT(*) FROM emails').fetchone()[0]
+    stats = conn.execute('''
+        SELECT category, COUNT(*) as count
+        FROM emails GROUP BY category
+    ''').fetchall()
+
+    return render_template('index.html',
+        emails=emails,
+        category=category,
+        priority=priority,
+        search=search,
+        total=total,
+        stats=stats
+    )
+
+@app.route('/process', methods=['POST'])
+def process_emails():
+    global processing_status
+    if processing_status['running']:
+        return jsonify({'error': 'Already running'}), 400
+    thread = threading.Thread(target=process_emails_background)
+    thread.daemon = True
+    thread.start()
+    return jsonify({'started': True})
+
+@app.route('/status')
+def status():
+    return jsonify(processing_status)
 
 @app.route('/email/<int:email_id>')
 def email_detail(email_id):

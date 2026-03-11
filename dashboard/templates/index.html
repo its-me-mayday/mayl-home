@@ -30,7 +30,7 @@
 <div class="container">
 
   <!-- Stats -->
-  <div class="row mb-4">
+  <div class="row mb-4" id="statsRow">
     {% for stat in stats %}
     <div class="col-auto">
       <a href="?category={{ stat[0] }}" class="text-decoration-none">
@@ -96,7 +96,7 @@
             <th>Azione</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="emailTable">
         {% for e in emails %}
           <tr>
             <td class="text-nowrap">{{ e['date'][:16] if e['date'] else '-' }}</td>
@@ -129,23 +129,53 @@ function applyFilters() {
   window.location = `/?search=${search}&category=${cat}&priority=${pri}`;
 }
 
+let refreshInterval = null;
+
 function processEmails() {
   const btn = document.getElementById('processBtn');
   btn.disabled = true;
   btn.innerHTML = '⏳ Processing...';
+
   fetch('/process', { method: 'POST' })
     .then(r => r.json())
     .then(d => {
+      if (d.error) {
+        alert(d.error);
+        btn.disabled = false;
+        btn.innerHTML = '🤖 Processa nuove email';
+        return;
+      }
+      refreshInterval = setInterval(pollStatus, 3000);
+    });
+}
+
+function pollStatus() {
+  fetch('/status')
+    .then(r => r.json())
+    .then(d => {
       const res = document.getElementById('result');
-      res.className = 'alert alert-success mb-3';
-      res.innerHTML = `✅ ${d.processed} email classificate, ${d.errors} errori`;
-      btn.disabled = false;
-      btn.innerHTML = '🤖 Processa nuove email';
-      setTimeout(() => location.reload(), 2000);
-    })
-    .catch(() => {
-      btn.disabled = false;
-      btn.innerHTML = '🤖 Processa nuove email';
+      res.classList.remove('d-none');
+
+      if (d.running) {
+        res.className = 'alert alert-info mb-3';
+        res.innerHTML = `⏳ Processing... ${d.processed} classificate su ${d.total} totali, ${d.errors} errori`;
+
+        fetch('/').then(r => r.text()).then(html => {
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(html, 'text/html');
+          document.getElementById('emailTable').innerHTML =
+            doc.getElementById('emailTable').innerHTML;
+          document.getElementById('statsRow').innerHTML =
+            doc.getElementById('statsRow').innerHTML;
+        });
+      } else {
+        clearInterval(refreshInterval);
+        res.className = 'alert alert-success mb-3';
+        res.innerHTML = `✅ Completato! ${d.processed} email classificate, ${d.errors} errori`;
+        document.getElementById('processBtn').disabled = false;
+        document.getElementById('processBtn').innerHTML = '🤖 Processa nuove email';
+        setTimeout(() => location.reload(), 2000);
+      }
     });
 }
 </script>
