@@ -9,40 +9,77 @@
     body { background: #f0f2f5; margin: 0; }
     .navbar { background: #1a1a2e !important; }
     .app-layout { display: flex; min-height: calc(100vh - 56px); }
+
+    /* ── Sidebar ── */
     .sidebar {
       width: 280px; min-width: 280px; background: #1e1e2e;
       color: #cdd6f4; padding: 20px 16px;
       position: sticky; top: 0;
       height: calc(100vh - 56px); overflow-y: auto;
     }
-    .sidebar h6 { color: #89b4fa; font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; margin: 20px 0 8px; }
+    .sidebar h6 {
+      color: #89b4fa; font-size: 11px; text-transform: uppercase;
+      letter-spacing: 1.5px; margin: 20px 0 8px;
+    }
     .sidebar h6:first-child { margin-top: 0; }
+
+    /* ── Stat cards ── */
     .stat-card { background: #313244; border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; }
     .stat-card .label { font-size: 11px; color: #a6adc8; margin-bottom: 2px; }
     .stat-card .value { font-size: 22px; font-weight: 700; color: #cdd6f4; }
     .stat-card .value.yellow { color: #f9e2af; }
-    .stat-card .value.blue { color: #89b4fa; }
-    .stat-card .value.green { color: #a6e3a1; }
+    .stat-card .value.blue   { color: #89b4fa; }
+    .stat-card .value.green  { color: #a6e3a1; }
+    .info-icon { float: right; color: #585b70; cursor: help; font-size: 13px; }
+    .info-icon:hover { color: #89b4fa; }
+
+    /* ── Stat legend ── */
+    .stat-legend {
+      background: #181825; border-radius: 8px;
+      padding: 10px 12px; margin-bottom: 8px;
+      font-size: 11px; color: #a6adc8;
+    }
+    .legend-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; line-height: 1.8; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+    .legend-dot.blue   { background: #89b4fa; }
+    .legend-dot.yellow { background: #f9e2af; }
+    .legend-dot.white  { background: #cdd6f4; }
+    .legend-dot.green  { background: #a6e3a1; }
+    .legend-op { color: #585b70; font-weight: bold; }
+
+    /* ── Processing ── */
     .processing-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
     .processing-dot.active { background: #a6e3a1; box-shadow: 0 0 6px #a6e3a1; animation: pulse 1s infinite; }
-    .processing-dot.idle { background: #585b70; }
+    .processing-dot.idle   { background: #585b70; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
     .progress-sidebar { height: 6px; border-radius: 3px; background: #45475a; margin-top: 8px; overflow: hidden; }
     .progress-sidebar-bar { height: 100%; background: #89b4fa; border-radius: 3px; transition: width 0.5s ease; }
+    .last-run-info { font-size: 11px; color: #a6adc8; margin-top: 4px; }
+
+    /* ── Category list ── */
     .cat-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #313244; font-size: 13px; cursor: pointer; }
     .cat-row:last-child { border-bottom: none; }
     .cat-row:hover { color: #89b4fa; }
     .cat-badge { font-size: 11px; background: #45475a; border-radius: 10px; padding: 2px 8px; }
+
+    /* ── Sync info ── */
+    .sync-info { font-size: 11px; color: #a6adc8; word-break: break-all; }
+
+    /* ── Main content ── */
     .main-content { flex: 1; padding: 24px; overflow: auto; }
-    .badge-useful { background: #198754; }
-    .badge-spam { background: #dc3545; }
+
+    /* ── Badges ── */
+    .badge-useful     { background: #198754; }
+    .badge-spam       { background: #dc3545; }
     .badge-newsletter { background: #fd7e14; }
-    .badge-work { background: #0d6efd; }
-    .badge-personal { background: #6f42c1; }
-    .badge-other { background: #6c757d; }
-    .priority-high { color: #dc3545; font-weight: bold; }
+    .badge-work       { background: #0d6efd; }
+    .badge-personal   { background: #6f42c1; }
+    .badge-other      { background: #6c757d; }
+    .priority-high   { color: #dc3545; font-weight: bold; }
     .priority-medium { color: #fd7e14; }
-    .priority-low { color: #6c757d; }
+    .priority-low    { color: #6c757d; }
+
+    /* ── Delete bar ── */
     .delete-bar {
       position: sticky; top: 0; z-index: 100; background: #dc3545;
       color: white; padding: 10px 20px; display: none;
@@ -50,13 +87,15 @@
     }
     .delete-bar.visible { display: flex; }
     tr.selected { background: #fff3cd !important; }
-    .sync-info { font-size: 11px; color: #a6adc8; word-break: break-all; }
-    .manually-classified { opacity: 0.7; font-style: italic; font-size: 10px; }
+
+    /* ── Sorting ── */
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
     th.sortable:hover { background: #3d3d3d; }
     th.sort-active { color: #89b4fa; }
     .sort-arrow { margin-left: 4px; font-size: 10px; }
-    .last-run-info { font-size: 11px; color: #a6adc8; margin-top: 4px; }
+
+    /* ── Misc ── */
+    .manually-classified { opacity: 0.7; font-style: italic; font-size: 10px; }
   </style>
 </head>
 <body>
@@ -70,8 +109,11 @@
 
 <div class="app-layout">
 
-  <!-- SIDEBAR -->
+  <!-- ══════════════════════════════════════════
+       SIDEBAR
+  ══════════════════════════════════════════ -->
   <div class="sidebar">
+
     <h6>Stato sistema</h6>
     <div class="stat-card">
       <div class="label">Processing</div>
@@ -88,20 +130,49 @@
 
     <h6>Archivio</h6>
     <div class="stat-card">
-      <div class="label">Email archiviate</div>
+      <div class="label">
+        Email archiviate
+        <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="right"
+          title="Email scaricate da Gmail e classificate dall'AI. Sono visibili e ricercabili nella tabella.">ⓘ</span>
+      </div>
       <div class="value blue" id="hudTotal">—</div>
     </div>
     <div class="stat-card">
-      <div class="label">Da processare</div>
+      <div class="label">
+        Da processare
+        <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="right"
+          title="Email presenti in maildir ma non ancora classificate dall'AI. Clicca 'Processa nuove email' per classificarle.">ⓘ</span>
+      </div>
       <div class="value yellow" id="hudUnprocessed">—</div>
     </div>
     <div class="stat-card">
-      <div class="label">Totale in maildir</div>
+      <div class="label">
+        Totale in maildir
+        <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="right"
+          title="Email scaricate localmente tramite offlineimap. È la somma di archiviate + da processare. Può essere inferiore a Gmail se il sync non è ancora completo.">ⓘ</span>
+      </div>
       <div class="value" id="hudMaildir">—</div>
     </div>
     <div class="stat-card">
-      <div class="label">Email su Gmail</div>
+      <div class="label">
+        Email su Gmail
+        <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="right"
+          title="Totale email presenti sul server Gmail (dato aggiornato ogni 5 minuti). Se è maggiore di Maildir, il sync non ha ancora scaricato tutto.">ⓘ</span>
+      </div>
       <div class="value green" id="hudGmail">—</div>
+    </div>
+
+    <!-- Legenda relazione numeri -->
+    <div class="stat-legend">
+      <div class="legend-row">
+        <span class="legend-dot blue"></span><span>Archiviate</span>
+        <span class="legend-op">+</span>
+        <span class="legend-dot yellow"></span><span>Da proc.</span>
+        <span class="legend-op">=</span>
+        <span class="legend-dot white"></span><span>Maildir</span>
+        <span class="legend-op">≤</span>
+        <span class="legend-dot green"></span><span>Gmail</span>
+      </div>
     </div>
 
     <h6>Ultima sync IMAP</h6>
@@ -111,7 +182,9 @@
     <div id="hudCategories"></div>
   </div>
 
-  <!-- MAIN -->
+  <!-- ══════════════════════════════════════════
+       MAIN CONTENT
+  ══════════════════════════════════════════ -->
   <div class="main-content">
 
     <!-- Delete bar -->
@@ -165,7 +238,7 @@
       </div>
     </div>
 
-    <!-- Alert result -->
+    <!-- Alert -->
     <div id="result" class="alert d-none mb-3"></div>
 
     <!-- Table -->
@@ -299,14 +372,19 @@
 let selectedIds = new Set();
 const CAT_ICONS = { useful:'✅', work:'💼', personal:'👤', newsletter:'📰', spam:'🚫', other:'📁' };
 
+// ── Tooltip init ──────────────────────────────────────────
+document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+  new bootstrap.Tooltip(el, { placement: 'right' });
+});
+
 // ── HUD ───────────────────────────────────────────────────
 function updateHUD() {
   fetch('/stats').then(r => r.json()).then(d => {
-    document.getElementById('hudTotal').textContent = d.total_archived.toLocaleString();
+    document.getElementById('hudTotal').textContent      = d.total_archived.toLocaleString();
     document.getElementById('hudUnprocessed').textContent = d.unprocessed.toLocaleString();
-    document.getElementById('hudMaildir').textContent = d.total_maildir.toLocaleString();
-    document.getElementById('hudGmail').textContent = d.total_gmail.toLocaleString();
-    document.getElementById('hudLastSync').textContent = d.last_sync || 'N/A';
+    document.getElementById('hudMaildir').textContent    = d.total_maildir.toLocaleString();
+    document.getElementById('hudGmail').textContent      = d.total_gmail.toLocaleString();
+    document.getElementById('hudLastSync').textContent   = d.last_sync || 'N/A';
 
     const dot          = document.getElementById('processingDot');
     const label        = document.getElementById('processingLabel');
@@ -321,7 +399,7 @@ function updateHUD() {
       label.textContent = 'In corso...';
       progressWrap.style.display = 'block';
       progressText.style.display = 'block';
-      lastRunInfo.style.display = 'none';
+      lastRunInfo.style.display  = 'none';
       const pct = d.processing.total > 0
         ? Math.round((d.processing.processed / d.processing.total) * 100) : 0;
       progressBar.style.width = pct + '%';
@@ -333,11 +411,12 @@ function updateHUD() {
       label.textContent = 'Inattivo';
       progressWrap.style.display = 'none';
       progressText.style.display = 'none';
-      btn.disabled = false;
+      btn.disabled  = false;
       btn.innerHTML = '🤖 Processa nuove email';
       if (d.processing.last_run) {
         lastRunInfo.style.display = 'block';
-        lastRunInfo.textContent = `Ultimo: ${d.processing.last_run} — ${d.processing.last_run_processed} classificate, ${d.processing.last_run_errors} errori`;
+        lastRunInfo.textContent =
+          `Ultimo: ${d.processing.last_run} — ${d.processing.last_run_processed} classificate, ${d.processing.last_run_errors} errori`;
       } else {
         lastRunInfo.style.display = 'none';
       }
@@ -376,7 +455,7 @@ function sortBy(col) {
 // ── Filters ───────────────────────────────────────────────
 function applyFilters() {
   const params = new URLSearchParams(window.location.search);
-  params.set('search', document.getElementById('search').value);
+  params.set('search',   document.getElementById('search').value);
   params.set('category', document.getElementById('catFilter').value);
   params.set('priority', document.getElementById('priFilter').value);
   params.delete('page');
@@ -439,7 +518,6 @@ function reclassify(id, category, priority) {
   const body = {};
   if (category) body.category = category;
   if (priority) body.priority = priority;
-
   fetch(`/email/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -477,7 +555,8 @@ function deleteSelected(deleteRemote) {
   }).then(r => r.json()).then(d => {
     if (d.error) { showResult('danger', `❌ ${d.error}`); return; }
     let msg = `✅ ${d.local_deleted} email eliminate dall'archivio`;
-    if (deleteRemote) msg += ` — ${d.remote_deleted} spostate nel cestino Gmail${d.remote_errors > 0 ? ` (${d.remote_errors} errori)` : ''}`;
+    if (deleteRemote)
+      msg += ` — ${d.remote_deleted} spostate nel cestino Gmail${d.remote_errors > 0 ? ` (${d.remote_errors} errori)` : ''}`;
     showResult('success', msg);
     clearSelection();
     setTimeout(() => location.reload(), 2000);
@@ -489,18 +568,17 @@ function processEmails() {
   const btn = document.getElementById('processBtn');
   btn.disabled = true;
   btn.innerHTML = '⏳ Avvio...';
-
   fetch('/process', { method: 'POST' }).then(r => r.json()).then(d => {
     if (d.error) {
       showResult('danger', `❌ ${d.error}`);
-      btn.disabled = false;
+      btn.disabled  = false;
       btn.innerHTML = '🤖 Processa nuove email';
       return;
     }
     showResult('info', '⏳ Processor avviato — la HUD si aggiornerà automaticamente');
   }).catch(() => {
     showResult('danger', '❌ Errore di connessione');
-    btn.disabled = false;
+    btn.disabled  = false;
     btn.innerHTML = '🤖 Processa nuove email';
   });
 }
