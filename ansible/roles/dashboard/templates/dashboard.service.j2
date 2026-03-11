@@ -1,0 +1,14 @@
+[Unit]
+Description=mayl-home Email Dashboard
+After=network.target ollama.service
+
+[Service]
+User=archiver
+WorkingDirectory=/home/archiver/app
+ExecStart=/home/archiver/venv/bin/python main.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
