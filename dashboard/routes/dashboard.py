@@ -46,8 +46,8 @@ def index():
     page = min(page, total_pages)
     offset = (page - 1) * PAGE_SIZE
 
-    # date_ts è un timestamp Unix inserito dal processor (parsing RFC 2822)
-    # Fallback a processed_at per email già in DB senza date_ts
+    # date_ts è un timestamp Unix (parsing RFC 2822 fatto dal processor)
+    # COALESCE fallback su processed_at per email senza date_ts
     sort_expr = "COALESCE(date_ts, strftime('%s', processed_at))" if sort == 'date' else sort
     query += f' ORDER BY {sort_expr} {order.upper()} LIMIT {PAGE_SIZE} OFFSET {offset}'
 
@@ -114,3 +114,4 @@ def stats():
         'last_sync': last_sync,
         'categories': [{'name': r['category'], 'count': r['count']} for r in categories]
     })
+

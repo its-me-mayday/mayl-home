@@ -53,10 +53,10 @@ def main():
         ).fetchone():
             continue
 
-        subject  = msg.get('subject', '(no subject)')
-        sender   = msg.get('from', '')
-        date     = msg.get('date', '')
-        date_ts  = parse_date_ts(date)
+        subject = msg.get('subject', '(no subject)')
+        sender  = msg.get('from', '')
+        date    = msg.get('date', '')
+        date_ts = parse_date_ts(date)
 
         body = ''
         if msg.is_multipart():
