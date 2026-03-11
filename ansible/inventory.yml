@@ -1,5 +1,5 @@
 all:
   hosts:
     mayl_home:
-      ansible_host: 192.168.178.110
+      ansible_host: 192.168.178.115
       ansible_user: root
