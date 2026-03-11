@@ -1,37 +1,91 @@
-# 📬 mayl-home
+# mayl-home
 
-> Self-hosted email archiver with local AI classification, running on Proxmox LXC — fully provisioned with Infrastructure as Code.
+Self-hosted email archiver with local AI classification, running on Proxmox LXC.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
-![OpenTofu](https://img.shields.io/badge/OpenTofu-1.11+-purple.svg)
-![Ansible](https://img.shields.io/badge/Ansible-2.15+-red.svg)
+Syncs email from Gmail (or any IMAP provider) to a local Maildir, classifies each message using a local LLM (Llama 3.2 3B via Ollama), and exposes a web dashboard for search, filtering, bulk deletion, and manual reclassification. No data leaves your network.
 
 ---
 
-## What is mayl-home?
+## Architecture
 
-mayl-home is a fully self-hosted system that:
+```
+┌─────────────────────────────────────────────────────────┐
+│  Proxmox LXC — mayl-home (192.168.178.115)              │
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐    │
+│  │  cron (every hour, user: archiver)              │    │
+│  │    offlineimap → Maildir                        │    │
+│  │    echo "Sync completed: $(date)" >> sync.log   │    │
+│  │    sudo systemctl start mayl-processor          │    │
+│  └────────────────────┬────────────────────────────┘    │
+│                       │ triggers                        │
+│  ┌────────────────────▼────────────────────────────┐    │
+│  │  mayl-processor.service (systemd)               │    │
+│  │    reads Maildir                                │    │
+│  │    → Ollama (Llama 3.2 3B, localhost:11434)     │    │
+│  │    → classifies: category, priority,            │    │
+│  │      summary (IT), action_required              │    │
+│  │    → writes to SQLite (archive.db)              │    │
+│  │    → exposes status via Unix socket             │    │
+│  │      /run/mayl/processor.sock                   │    │
+│  └────────────────────┬────────────────────────────┘    │
+│                       │ IPC (Unix socket)               │
+│  ┌────────────────────▼────────────────────────────┐    │
+│  │  mayl-dashboard.service (Flask, port 5000)      │    │
+│  │    web UI — search, filter, sort, paginate      │    │
+│  │    bulk delete (local + Gmail trash)            │    │
+│  │    manual reclassify                            │    │
+│  │    real-time HUD (stats, progress, categories)  │    │
+│  └─────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────┘
+         ▲ IMAP SSL                    ▲ HTTP :5000
+         │                            │
+    imap.gmail.com              your browser
+```
 
-- **Archives** your Gmail (or any IMAP) emails locally on your Proxmox server
-- **Classifies** every email using a local AI model (Ollama + Llama 3.2) — no data leaves your network
-- **Shows** everything in a clean web dashboard with filters, search, and real-time processing
+### Services
 
-Everything is provisioned with IaC: one `tofu apply` and one `ansible-playbook` and you're done.
+| Service | Type | Restart | Description |
+|---|---|---|---|
+| `mayl-processor` | systemd simple | no | Classifies new emails, triggered by cron after sync |
+| `mayl-dashboard` | systemd simple | always | Flask web UI, reads SQLite and processor socket |
+| offlineimap | cron (hourly) | — | Syncs Gmail → local Maildir |
+| ollama | systemd | always | Local LLM inference server |
+
+### IPC — Unix Socket
+
+The processor and dashboard communicate via a Unix domain socket at `/run/mayl/processor.sock`.
+
+The processor runs a lightweight threaded server that responds to `STATUS` queries with JSON:
+
+```json
+{
+  "running": true,
+  "processed": 1247,
+  "errors": 3,
+  "total": 27088,
+  "last_run": "2026-03-11 14:30:00",
+  "last_run_processed": 1247,
+  "last_run_errors": 3
+}
+```
+
+The dashboard reads this with a 1-second timeout and falls back to a zero-state if the processor is not running — the dashboard never blocks.
 
 ---
 
 ## Stack
 
-| Component | Version | Role |
-|---|---|---|
-| **OpenTofu** | >= 1.11 | Provisions the LXC container on Proxmox |
-| **Ansible** | >= 2.15 | Configures the container and deploys all services |
-| **offlineimap** | latest | Fetches emails via IMAP, stores as Maildir |
-| **Ollama + Llama 3.2 3B** | latest | Local AI model for email classification |
-| **Flask** | >= 3.0 | Web dashboard backend |
-| **SQLite** | built-in | Stores emails and AI classification results |
-| **Proxmox LXC** | Ubuntu 22.04 | Container runtime |
+| Component | Technology |
+|---|---|
+| Infrastructure | OpenTofu + Telmate/proxmox provider |
+| Configuration | Ansible (roles, vault-encrypted secrets) |
+| Container | Ubuntu 22.04 LXC on Proxmox |
+| Email sync | offlineimap |
+| AI inference | Ollama + Llama 3.2 3B |
+| Backend | Python 3, Flask |
+| Database | SQLite |
+| Frontend | Bootstrap 5.3 |
 
 ---
 
@@ -41,32 +95,50 @@ Everything is provisioned with IaC: one `tofu apply` and one `ansible-playbook` 
 mayl-home/
 ├── terraform/
 │   ├── main.tf               # Provider configuration
-│   ├── variables.tf          # All input variables with descriptions
-│   ├── outputs.tf            # Output values (IP, hostname)
-│   ├── lxc.tf                # LXC container resource
-│   └── *.tfvars              # 🔒 Secret values (gitignored)
+│   ├── lxc.tf                # LXC resource
+│   ├── variables.tf          # All input variables
+│   ├── outputs.tf            # container_ip, container_hostname
+│   └── itsmemayday.tfvars    # 🔒 gitignored — your actual values
+│
 ├── ansible/
-│   ├── ansible.cfg           # Ansible configuration
-│   ├── inventory.yml         # Host definitions
-│   ├── playbook.yml          # Main playbook with tagged roles
-│   ├── group_vars/
-│   │   └── all.yml           # Vault-encrypted credentials
+│   ├── ansible.cfg           # host_key_checking = False
+│   ├── inventory.yml         # mayl_home host
+│   ├── playbook.yml          # roles with tags
+│   ├── group_vars/all.yml    # vault-encrypted credentials
 │   └── roles/
-│       ├── base/             # System dependencies, archiver user
-│       ├── ssh/              # SSH hardening
-│       ├── imap/             # offlineimap setup and cron
-│       ├── ollama/           # Ollama + Llama 3.2 installation
-│       └── dashboard/        # Flask app deployment
+│       ├── base/             # apt deps, archiver user, zstd
+│       ├── ssh/              # SSH hardening (placeholder)
+│       ├── imap/             # offlineimap + cron + sudoers
+│       ├── ollama/           # Ollama + llama3.2:3b pull
+│       ├── processor/        # mayl-processor systemd service
+│       └── dashboard/        # Flask app + mayl-dashboard service
+│
 ├── app/
-│   ├── main.py               # Flask backend + background processing
-│   ├── classifier.py         # Ollama AI classifier
-│   ├── requirements.txt      # Python dependencies
+│   ├── main.py               # Flask app factory
+│   ├── config.py             # All configuration (env vars)
+│   ├── database.py           # SQLite init and connection
+│   ├── processor_service.py  # Standalone processor entrypoint
+│   ├── socket_server.py      # Unix socket status server
+│   ├── requirements.txt
+│   ├── routes/
+│   │   ├── __init__.py
+│   │   ├── dashboard.py      # GET /, GET /stats
+│   │   ├── emails.py         # /process, /delete, /smart-select, PATCH /email/<id>
+│   │   └── gmail.py          # IMAP delete + message count
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── classifier.py     # Ollama API call
+│   │   ├── maildir.py        # Maildir reading + cache
+│   │   └── processor.py      # Unix socket client
 │   └── templates/
-│       └── index.html        # Web dashboard
-├── .gitignore
+│       └── index.html        # Single-page dashboard
+│
 ├── .env.example
+├── .gitignore
 ├── AUTHORS
 ├── CHANGELOG.md
+├── CONTRIBUTING.md
+├── LICENSE
 └── README.md
 ```
 
@@ -74,276 +146,173 @@ mayl-home/
 
 ## Prerequisites
 
-### On your local machine
-
-- [OpenTofu](https://opentofu.org/docs/intro/install/) >= 1.11
-- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) >= 2.15
-- `sshpass` (required for Ansible password authentication)
-
-```bash
-# macOS
-brew install opentofu ansible sshpass
-
-# Ubuntu/Debian
-sudo apt install ansible sshpass
-wget -O tofu.deb https://github.com/opentofu/opentofu/releases/latest/download/tofu_linux_amd64.deb
-sudo dpkg -i tofu.deb
-```
-
-### On Proxmox
-
-- Proxmox VE >= 7.x
-- Ubuntu 22.04 LXC template downloaded:
-  `Proxmox UI → node → local → CT Templates → Templates → ubuntu-22.04-standard`
+- Proxmox VE with API access
+- OpenTofu >= 1.11
+- Ansible >= 2.14
+- Gmail account with IMAP enabled and an App Password (16 chars, no spaces)
+- `ansible-vault` password (choose one, keep it safe)
 
 ---
 
-## Quickstart
+## Deploy
 
-### Step 1 — Terraform: Provision the LXC container
-
-Copy the example vars file and fill in your values:
+### 1. Provision the LXC
 
 ```bash
-cp .env.example terraform/myvars.tfvars
-```
-
-Edit `terraform/myvars.tfvars`:
-
-```hcl
-proxmox_host     = "192.168.1.10"       # your Proxmox IP
-proxmox_user     = "root@pam"
-proxmox_password = "your-proxmox-password"
-container_ip     = "192.168.1.80/24"    # desired container IP
-gateway          = "192.168.1.1"
-```
-
-Run OpenTofu:
-
-```bash
-cd terraform/
+cd terraform
+cp itsmemayday.tfvars.example itsmemayday.tfvars
+# Edit itsmemayday.tfvars with your Proxmox credentials and network config
 tofu init
-tofu plan -var-file=myvars.tfvars
-tofu apply -var-file=myvars.tfvars
+tofu apply -var-file=itsmemayday.tfvars
 ```
 
-Expected output:
+### 2. Enable SSH on the container
 
-```
-Apply complete! Resources: 1 added, 0 changed, 0 destroyed.
-Outputs:
-  container_hostname = "mayl-home"
-  container_ip       = "192.168.1.80/24"
-```
-
-> ⚠️ `*.tfvars` files are gitignored — never commit them.
-
----
-
-### Step 2 — Proxmox Console: Enable SSH
-
-SSH is installed in the container but **not started by default**. Open the container console:
-
-**Proxmox UI → mayl-home → Console**
+From the Proxmox console (one-time, before Ansible can connect):
 
 ```bash
-# Allow root SSH login
 echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
-
-# Enable and start SSH
-systemctl enable ssh
-systemctl start ssh
-
-# Set the root password (you will use this in Ansible)
-passwd root
+systemctl enable ssh && systemctl start ssh
 ```
 
----
-
-### Step 3 — Gmail: Create an App Password
-
-mayl-home uses an **App Password** to connect to Gmail — required if you have 2-Step Verification enabled (recommended).
-
-1. Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
-2. Type `mayl-home` as the app name and click **Create**
-3. Copy the 16-character password shown (e.g. `abcd efgh ijkl mnop`)
-
-Enable IMAP on Gmail:
-
-1. Gmail → Settings → **See all settings** → **Forwarding and POP/IMAP**
-2. Enable IMAP → **Save Changes**
-
-IMAP credentials to use:
-
-```
-imap_host:     imap.gmail.com
-imap_user:     your@gmail.com
-imap_password: abcdefghijklmnop   (no spaces)
-```
-
-For Outlook/Hotmail use `outlook.office365.com` as host.
-
----
-
-### Step 4 — Ansible: Encrypt credentials
-
-Encrypt all credentials with ansible-vault (use the **same vault password** for all):
+### 3. Encrypt credentials with Ansible Vault
 
 ```bash
-cd ansible/
-
-# SSH password (set in Step 2)
-ansible-vault encrypt_string 'your-root-password' --name 'ansible_password' --ask-vault-pass
-
-# IMAP credentials (from Step 3)
+cd ansible
+ansible-vault encrypt_string 'your_ssh_password' --name 'ansible_password' --ask-vault-pass
 ansible-vault encrypt_string 'imap.gmail.com' --name 'imap_host' --ask-vault-pass
-ansible-vault encrypt_string 'your@gmail.com' --name 'imap_user' --ask-vault-pass
-ansible-vault encrypt_string 'abcdefghijklmnop' --name 'imap_password' --ask-vault-pass
+ansible-vault encrypt_string 'you@gmail.com' --name 'imap_user' --ask-vault-pass
+ansible-vault encrypt_string 'abcdabcdabcdabcd' --name 'imap_password' --ask-vault-pass
+# Paste results into group_vars/all.yml
 ```
 
-Paste all four outputs into `ansible/group_vars/all.yml`:
+> Gmail App Password: generate at myaccount.google.com → Security → App Passwords.
+> Store the 16-character code **without spaces**.
 
-```yaml
-ansible_password: !vault |
-          $ANSIBLE_VAULT;1.1;AES256
-          (output from first command)
-
-imap_host: !vault |
-          $ANSIBLE_VAULT;1.1;AES256
-          (output from second command)
-
-imap_user: !vault |
-          $ANSIBLE_VAULT;1.1;AES256
-          (output from third command)
-
-imap_password: !vault |
-          $ANSIBLE_VAULT;1.1;AES256
-          (output from fourth command)
-```
-
-Test connectivity:
-
-```bash
-ansible -i inventory.yml all -m ping --ask-vault-pass
-# Expected: mayl_home | SUCCESS => { "ping": "pong" }
-```
-
----
-
-### Step 5 — Ansible: Deploy everything
+### 4. Run Ansible
 
 ```bash
 ansible-playbook -i inventory.yml playbook.yml --ask-vault-pass
 ```
 
-This will install and configure: base dependencies, offlineimap, Ollama + Llama 3.2, and the Flask dashboard.
+Dashboard will be live at `http://<container-ip>:5000`.
 
-You can also run individual roles with tags:
+---
+
+## Partial Redeploy
+
+Each role has a tag — redeploy only what changed:
 
 ```bash
-ansible-playbook -i inventory.yml playbook.yml --tags base --ask-vault-pass
-ansible-playbook -i inventory.yml playbook.yml --tags imap --ask-vault-pass
-ansible-playbook -i inventory.yml playbook.yml --tags ollama --ask-vault-pass
+# Dashboard only (Flask app + template)
 ansible-playbook -i inventory.yml playbook.yml --tags dashboard --ask-vault-pass
+
+# Processor service only
+ansible-playbook -i inventory.yml playbook.yml --tags processor --ask-vault-pass
+
+# IMAP config + cron
+ansible-playbook -i inventory.yml playbook.yml --tags imap --ask-vault-pass
 ```
+
+> Redeploying `--tags dashboard` does **not** interrupt a processor run in progress.
 
 ---
 
-### Step 6 — Access the Dashboard
+## Dashboard Features
 
-Open your browser at:
-
-```
-http://<container-ip>:5000
-```
-
-Click **"Processa nuove email"** to start the AI classification. The dashboard updates in real time every 3 seconds while processing.
-
----
-
-## How it works
-
-```
-Gmail/IMAP
-    │
-    ▼ (every hour via cron)
-offlineimap → Maildir on disk
-    │
-    ▼ (on demand via dashboard)
-Flask /process endpoint
-    │
-    ▼
-Ollama Llama 3.2 3B (local AI)
-    │  classifies: category, priority, summary, action_required
-    ▼
-SQLite database
-    │
-    ▼
-Flask dashboard (http://container-ip:5000)
-```
-
-### Email categories
-
-| Category | Description |
+| Feature | Description |
 |---|---|
-| `useful` | Important emails worth keeping |
-| `work` | Work-related emails |
-| `personal` | Personal correspondence |
-| `newsletter` | Newsletters and subscriptions |
-| `spam` | Unwanted or promotional emails |
-| `other` | Everything else |
+| Search | Full-text on subject, sender, and AI summary |
+| Filter | By category and priority |
+| Sort | Click any column — asc/desc toggle, preserved across filters |
+| Pagination | 50 emails per page with numbered navigator |
+| Reclassify | ✏️ dropdown per row — override AI category/priority, updates in-place |
+| Smart select | One-click select all spam or all newsletter |
+| Delete (local) | Remove from archive only |
+| Delete (Gmail) | Move to Gmail trash (auto-deleted after 30 days) |
+| HUD sidebar | Live: archived count, maildir total, Gmail total, unprocessed, per-category |
+| Processing HUD | Animated dot, progress bar, processed/total, last run summary |
+| Button lock | "Processa nuove email" auto-disabled while processor is running |
+| IMAP sync time | Timestamp of last successful offlineimap run |
+
+---
+
+## Email Classification
+
+Each email is classified by Llama 3.2 3B:
+
+| Field | Values |
+|---|---|
+| `category` | useful, work, personal, newsletter, spam, other |
+| `priority` | high, medium, low |
+| `summary` | max 30 words in Italian |
+| `action_required` | true / false |
+
+Emails already in the database are skipped (`INSERT OR IGNORE` on `message_id`). Manual reclassifications are preserved (`manually_classified = 1`).
 
 ---
 
 ## Useful Commands
 
-| Command | Description |
-|---|---|
-| `tofu apply -var-file=myvars.tfvars` | Create/update the LXC container |
-| `tofu destroy -var-file=myvars.tfvars` | Destroy the container |
-| `ansible-playbook -i inventory.yml playbook.yml --ask-vault-pass` | Full deploy |
-| `ansible-playbook -i inventory.yml playbook.yml --tags dashboard --ask-vault-pass` | Redeploy dashboard only |
-| `ansible -i inventory.yml all -m ping --ask-vault-pass` | Test connectivity |
-| `ssh root@<container-ip>` | SSH into the container |
-| `systemctl status mayl-dashboard` | Check dashboard service |
-| `journalctl -u mayl-dashboard -f` | Live dashboard logs |
-| `su - archiver -c "find emails/ -type f \| wc -l"` | Count archived emails |
+```bash
+# Processor status and logs
+systemctl status mayl-processor
+journalctl -u mayl-processor -f
+
+# Dashboard status and logs
+systemctl status mayl-dashboard
+journalctl -u mayl-dashboard -f
+
+# Trigger processor manually
+systemctl start mayl-processor
+
+# Query socket directly
+echo STATUS | socat - UNIX-CONNECT:/run/mayl/processor.sock
+
+# Check cron
+crontab -u archiver -l
+
+# Sync log
+tail -f /home/archiver/sync.log
+
+# Database stats
+sqlite3 /home/archiver/archive.db \
+  "SELECT category, COUNT(*) FROM emails GROUP BY category;"
+```
+
+---
+
+## Roadmap
+
+- [ ] Email detail page (full body reader)
+- [ ] SSH key authentication in Ansible
+- [ ] Email notifications for high-priority messages (webhook/SMTP)
+- [ ] Gunicorn + nginx (replace Flask dev server)
+- [ ] Advanced statistics (charts by category and time period)
+- [ ] Microservices architecture (separate API, processor, worker with message queue)
 
 ---
 
 ## Security Notes
 
-- `*.tfvars` — gitignored, never committed
-- `ansible/group_vars/all.yml` — uses ansible-vault inline encryption, safe to commit
-- IMAP credentials — vault-encrypted, never stored in plain text
-- SSH root login — enabled only for LAN access
-- All AI processing happens locally — no email data leaves your network
+- All credentials stored encrypted with `ansible-vault`
+- `itsmemayday.tfvars` is gitignored — never commit it
+- The `archiver` user runs all services with minimum required permissions
+- Gmail access uses App Password (not your main account password)
+- Unix socket is chmod 660 — accessible only by the `archiver` user
+- Flask runs in dev mode — not suitable for exposure to untrusted networks
 
 ---
 
-## Troubleshooting
+## License
 
-**SSH connection refused**
-→ Open Proxmox console and run `systemctl start ssh`
+MIT — see [LICENSE](LICENSE)
 
-**Ansible: Permission denied**
-→ Re-run `passwd root` from console and re-encrypt with `ansible-vault encrypt_string`
+## Authors
 
-**Ansible vault error: Odd-length string**
-→ The vault block in `all.yml` is malformed — re-run `encrypt_string` and paste the exact output including all hex lines
+See [AUTHORS](AUTHORS)
 
-**Terraform: permissions not sufficient**
-→ Use provider `Telmate/proxmox` version `3.0.2-rc07` — older versions have issues with OpenTofu >= 1.11
+## Contributing
 
-**Ollama: model requires more memory**
-→ Increase container RAM to 8192 MB in `terraform/variables.tf` and run `tofu apply`
-
-**Gmail: IMAP authentication failed**
-→ Use the App Password (not your Google password) without spaces, and verify IMAP is enabled in Gmail settings
-
-**Gmail: App Passwords not visible**
-→ Enable 2-Step Verification first at [myaccount.google.com/security](https://myaccount.google.com/security)
-
-**Dashboard not reachable**
-→ Run `systemctl status mayl-dashboard` and `journalctl -u mayl-dashboard -n 30` on the container
+See [CONTRIBUTING.md](CONTRIBUTING.md)
 

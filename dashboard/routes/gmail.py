@@ -66,3 +66,26 @@ def delete_messages(message_ids: list) -> tuple:
         return 0, len(message_ids)
 
     return deleted, errors
+
+_gmail_cache = {'count': 0, 'last_updated': 0}
+
+def count_messages() -> int:
+    global _gmail_cache
+    import time
+    now = time.time()
+    if now - _gmail_cache['last_updated'] < 300:  # cache 5 minuti
+        return _gmail_cache['count']
+    try:
+        mail = imaplib.IMAP4_SSL(IMAP_HOST)
+        mail.login(IMAP_USER, IMAP_PASSWORD)
+        all_mail, _ = _get_folders(mail)
+        if all_mail:
+            status, data = mail.select(f'"{all_mail}"', readonly=True)
+            if status == 'OK':
+                count = int(data[0])
+                _gmail_cache = {'count': count, 'last_updated': now}
+                print(f'[Gmail] Total messages: {count}')
+        mail.logout()
+    except Exception as e:
+        print(f'[Gmail] Count error: {e}')
+    return _gmail_cache['count']

@@ -1,0 +1,23 @@
+---
+- name: Create /run/mayl directory
+  file:
+    path: /run/mayl
+    state: directory
+    owner: archiver
+    group: archiver
+    mode: '0755'
+
+- name: Copy processor service file
+  template:
+    src: mayl-processor.service.j2
+    dest: /etc/systemd/system/mayl-processor.service
+    mode: '0644'
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: true
+
+- name: Enable processor service
+  systemd:
+    name: mayl-processor
+    enabled: true

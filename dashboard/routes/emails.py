@@ -37,10 +37,22 @@ def _delete_background(ids, message_ids, delete_remote):
 
 @bp.route('/process', methods=['POST'])
 def process():
-    started = start_processing()
-    if not started:
+    from services.processor import get_status
+    import subprocess
+    
+    status = get_status()
+    if status.get('running'):
         return jsonify({'error': 'Already running'}), 400
-    return jsonify({'started': True})
+    
+    try:
+        subprocess.Popen(
+            ['sudo', 'systemctl', 'start', 'mayl-processor'],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        return jsonify({'started': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @bp.route('/status')
 def status():

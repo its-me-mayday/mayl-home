@@ -17,10 +17,25 @@
     name: "mayl-home imap sync"
     user: archiver
     minute: "0"
-    job: "/usr/bin/offlineimap -o -q >> /home/archiver/sync.log 2>&1 && echo \"Sync completed: $(date '+\\%Y-\\%m-\\%d \\%H:\\%M:\\%S')\" >> /home/archiver/sync.log"
+    job: >
+      /usr/bin/offlineimap -o -q >> /home/archiver/sync.log 2>&1
+      && echo "Sync completed: $(date '+\%Y-\%m-\%d \%H:\%M:\%S')" >> /home/archiver/sync.log
+      && sudo systemctl start mayl-processor
+
+- name: Allow archiver to start processor via sudo
+  copy:
+    dest: /etc/sudoers.d/mayl-processor
+    content: "archiver ALL=(ALL) NOPASSWD: /bin/systemctl start mayl-processor\n"
+    mode: '0440'
+    validate: 'visudo -cf %s'
 
 - name: Start first sync in background
-  shell: nohup offlineimap -o -q >> /home/archiver/sync.log 2>&1 &
+  shell: >
+    nohup bash -c '
+    /usr/bin/offlineimap -o -q >> /home/archiver/sync.log 2>&1
+    && echo "Sync completed: $(date +%Y-%m-%d\ %H:%M:%S)" >> /home/archiver/sync.log
+    && sudo systemctl start mayl-processor
+    ' >> /home/archiver/sync.log 2>&1 &
   become_user: archiver
   args:
     executable: /bin/bash

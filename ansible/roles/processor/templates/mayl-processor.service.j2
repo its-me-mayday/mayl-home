@@ -1,0 +1,18 @@
+[Unit]
+Description=mayl-home Email Processor
+After=network.target ollama.service
+Wants=ollama.service
+
+[Service]
+Type=simple
+User=archiver
+WorkingDirectory=/home/archiver/app
+ExecStart=/home/archiver/venv/bin/python processor_service.py
+Restart=no
+StandardOutput=journal
+StandardError=journal
+RuntimeDirectory=mayl
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
