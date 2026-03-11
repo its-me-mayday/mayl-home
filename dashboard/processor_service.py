@@ -1,24 +1,40 @@
 #!/usr/bin/env python3
 import sys
 import os
-import mailbox
-import sqlite3
 import time
+from email.utils import parsedate_to_datetime
 
-# Aggiungi app/ al path
 sys.path.insert(0, os.path.dirname(__file__))
-
 from socket_server import start_socket_server, update_status
 from services.classifier import classify_email
 from services.maildir import count_maildir, iter_maildir_messages
 from database import init_db
 from config import DB_PATH
 
+
+def parse_date_ts(date_str):
+    """Converte una data RFC 2822 in timestamp Unix. Ritorna None se non parsabile."""
+    if not date_str:
+        return None
+    try:
+        return int(parsedate_to_datetime(date_str).timestamp())
+    except Exception:
+        return None
+
+
 def main():
     print('[Processor] Starting')
     start_socket_server()
-
     conn = init_db()
+
+    # Migrazione: aggiungi date_ts se non esiste ancora
+    try:
+        conn.execute('ALTER TABLE emails ADD COLUMN date_ts INTEGER')
+        conn.commit()
+        print('[Processor] Migrazione: aggiunta colonna date_ts')
+    except Exception:
+        pass  # colonna già esistente
+
     total = count_maildir()
     update_status(running=True, processed=0, errors=0, total=total, last_run=None)
     print(f'[Processor] Total in maildir: {total}')
@@ -37,9 +53,10 @@ def main():
         ).fetchone():
             continue
 
-        subject = msg.get('subject', '(no subject)')
-        sender = msg.get('from', '')
-        date = msg.get('date', '')
+        subject  = msg.get('subject', '(no subject)')
+        sender   = msg.get('from', '')
+        date     = msg.get('date', '')
+        date_ts  = parse_date_ts(date)
 
         body = ''
         if msg.is_multipart():
@@ -60,11 +77,11 @@ def main():
             result = classify_email(subject, sender, body)
             conn.execute('''
                 INSERT OR IGNORE INTO emails
-                (message_id, sender, subject, date, body,
+                (message_id, sender, subject, date, date_ts, body,
                  category, priority, summary, action_required)
-                VALUES (?,?,?,?,?,?,?,?,?)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
             ''', (
-                msg_id, sender, subject, date, body[:5000],
+                msg_id, sender, subject, date, date_ts, body[:5000],
                 result.get('category', 'other'),
                 result.get('priority', 'low'),
                 result.get('summary', ''),
@@ -92,6 +109,7 @@ def main():
     # Tieni il socket vivo 60s dopo il termine così la dashboard può leggere lo stato
     print('[Processor] Keeping socket alive for 60s...')
     time.sleep(60)
+
 
 if __name__ == '__main__':
     main()

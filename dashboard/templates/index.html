@@ -55,6 +55,7 @@
     .progress-sidebar { height: 6px; border-radius: 3px; background: #45475a; margin-top: 8px; overflow: hidden; }
     .progress-sidebar-bar { height: 100%; background: #89b4fa; border-radius: 3px; transition: width 0.5s ease; }
     .last-run-info { font-size: 11px; color: #a6adc8; margin-top: 4px; }
+    .eta-info { font-size: 11px; color: #f9e2af; margin-top: 3px; }
 
     /* ── Category list ── */
     .cat-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #313244; font-size: 13px; cursor: pointer; }
@@ -86,7 +87,6 @@
       align-items: center; gap: 12px; border-radius: 8px; margin-bottom: 16px;
     }
     .delete-bar.visible { display: flex; }
-    tr.selected { background: #fff3cd !important; }
 
     /* ── Sorting ── */
     th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
@@ -94,11 +94,62 @@
     th.sort-active { color: #89b4fa; }
     .sort-arrow { margin-left: 4px; font-size: 10px; }
 
-    /* ── Misc ── */
+    /* ── Table improvements ── */
+    .table > tbody > tr { vertical-align: middle; }
+    /* Compact rows */
+    .table td, .table th { padding: 0.4rem 0.6rem; font-size: 13px; }
+    /* Zebra */
+    .table > tbody > tr:nth-child(even) { background: #f8f9fb; }
+    .table > tbody > tr:nth-child(even).selected { background: #fff3cd !important; }
+    tr.selected { background: #fff3cd !important; }
+    /* Action required highlight */
+    tr.action-required td:first-child {
+      border-left: 3px solid #dc3545;
+    }
+    /* Sender + subject truncate */
+    .cell-sender {
+      max-width: 160px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    .cell-subject {
+      max-width: 260px; overflow: hidden;
+      text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* Date relative */
+    .cell-date { white-space: nowrap; font-size: 12px; color: #6c757d; }
+    .cell-date .date-abs { display: block; font-size: 10px; color: #adb5bd; }
+    /* Hover preview */
+    .preview-tooltip {
+      display: none;
+      position: fixed;
+      z-index: 9999;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      border: 1px solid #45475a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      max-width: 360px;
+      font-size: 12px;
+      line-height: 1.5;
+      pointer-events: none;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    .preview-tooltip .pt-subject { font-weight: 600; color: #89b4fa; margin-bottom: 4px; }
+    .preview-tooltip .pt-meta { color: #a6adc8; font-size: 11px; margin-bottom: 6px; }
+    .preview-tooltip .pt-body { color: #cdd6f4; }
+
+    /* Misc */
     .manually-classified { opacity: 0.7; font-style: italic; font-size: 10px; }
   </style>
 </head>
 <body>
+
+<!-- Preview tooltip -->
+<div class="preview-tooltip" id="previewTooltip">
+  <div class="pt-subject" id="ptSubject"></div>
+  <div class="pt-meta" id="ptMeta"></div>
+  <div class="pt-body" id="ptBody"></div>
+</div>
 
 <nav class="navbar navbar-dark">
   <div class="container-fluid px-3">
@@ -125,6 +176,7 @@
         <div class="progress-sidebar-bar" id="progressBar" style="width:0%"></div>
       </div>
       <div id="progressText" class="label mt-1" style="display:none"></div>
+      <div id="etaInfo" class="eta-info" style="display:none"></div>
       <div id="lastRunInfo" class="last-run-info" style="display:none"></div>
     </div>
 
@@ -149,7 +201,7 @@
       <div class="label">
         Totale in maildir
         <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="right"
-          title="Email scaricate localmente tramite offlineimap. È la somma di archiviate + da processare. Può essere inferiore a Gmail se il sync non è ancora completo.">ⓘ</span>
+          title="Email scaricate localmente tramite offlineimap. È la somma di archiviate + da processare.">ⓘ</span>
       </div>
       <div class="value" id="hudMaildir">—</div>
     </div>
@@ -157,12 +209,11 @@
       <div class="label">
         Email su Gmail
         <span class="info-icon" data-bs-toggle="tooltip" data-bs-placement="right"
-          title="Totale email presenti sul server Gmail (dato aggiornato ogni 5 minuti). Se è maggiore di Maildir, il sync non ha ancora scaricato tutto.">ⓘ</span>
+          title="Totale email sul server Gmail (aggiornato ogni 5 minuti). Se maggiore di Maildir, il sync non è ancora completo.">ⓘ</span>
       </div>
       <div class="value green" id="hudGmail">—</div>
     </div>
 
-    <!-- Legenda relazione numeri -->
     <div class="stat-legend">
       <div class="legend-row">
         <span class="legend-dot blue"></span><span>Archiviate</span>
@@ -264,24 +315,36 @@
                 Priorità <span class="sort-arrow">{% if sort=='priority' %}{{ '▲' if order=='asc' else '▼' }}{% else %}⇅{% endif %}</span>
               </th>
               <th>Riepilogo AI</th>
-              <th>Azione</th>
               <th>✏️</th>
             </tr>
           </thead>
           <tbody id="emailTable">
           {% for e in emails %}
-            <tr data-id="{{ e['id'] }}">
+            <tr data-id="{{ e['id'] }}"
+                data-subject="{{ e['subject']|e }}"
+                data-sender="{{ e['sender']|e }}"
+                data-date="{{ e['date']|e }}"
+                data-summary="{{ e['summary']|e }}"
+                data-body="{{ e['body'][:300]|e if e['body'] else '' }}"
+                class="{% if e['action_required'] %}action-required{% endif %}"
+                onmouseenter="showPreview(event, this)"
+                onmousemove="movePreview(event)"
+                onmouseleave="hidePreview()">
               <td><input type="checkbox" class="email-cb" value="{{ e['id'] }}" onchange="onCheckboxChange()"></td>
-              <td class="text-nowrap">{{ e['date'][:16] if e['date'] else '-' }}</td>
-              <td>{{ e['sender'][:30] if e['sender'] else '-' }}</td>
-              <td>{{ e['subject'][:60] if e['subject'] else '(no subject)' }}</td>
+              <td class="cell-date">
+                <span id="reldate-{{ e['id'] }}" data-date="{{ e['date'] }}">{{ e['date'][:16] if e['date'] else '-' }}</span>
+                <span class="date-abs" id="absdate-{{ e['id'] }}" data-date="{{ e['date'] }}"></span>
+
+              </td>
+              <td><div class="cell-sender" title="{{ e['sender'] }}">{{ e['sender'] or '-' }}</div></td>
+              <td><div class="cell-subject" title="{{ e['subject'] }}">{{ e['subject'] or '(no subject)' }}</div></td>
               <td>
                 <span class="badge badge-{{ e['category'] }}" id="cat-{{ e['id'] }}">{{ e['category'] }}</span>
                 {% if e['manually_classified'] %}<br><span class="manually-classified">manual</span>{% endif %}
+                {% if e['action_required'] %}<br><span class="badge bg-danger" style="font-size:10px">⚡</span>{% endif %}
               </td>
               <td class="priority-{{ e['priority'] }}" id="pri-{{ e['id'] }}">{{ e['priority'] }}</td>
-              <td class="text-muted small">{{ e['summary'] }}</td>
-              <td>{% if e['action_required'] %}<span class="badge bg-danger">⚡ Action</span>{% endif %}</td>
+              <td class="text-muted" style="font-size:12px; max-width:200px">{{ e['summary'] }}</td>
               <td>
                 <div class="dropdown">
                   <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">✏️</button>
@@ -377,20 +440,76 @@ document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
   new bootstrap.Tooltip(el, { placement: 'right' });
 });
 
+// ── Relative dates ────────────────────────────────────────
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date)) return dateStr.slice(0, 16);
+  const diff = Math.floor((Date.now() - date) / 1000);
+  if (diff < 60)     return 'poco fa';
+  if (diff < 3600)   { const m = Math.floor(diff/60);   return `${m} ${m===1?'minuto':'minuti'} fa`; }
+  if (diff < 86400)  { const h = Math.floor(diff/3600);  return `${h} ${h===1?'ora':'ore'} fa`; }
+  if (diff < 172800) return 'ieri';
+  if (diff < 604800) { const g = Math.floor(diff/86400); return `${g} giorni fa`; }
+  if (diff < 2592000){ const s = Math.floor(diff/604800); return `${s} ${s===1?'settimana':'settimane'} fa`; }
+  if (diff < 31536000){ const mo = Math.floor(diff/2592000); return `${mo} ${mo===1?'mese':'mesi'} fa`; }
+  const y = Math.floor(diff/31536000);
+  return `${y} ${y===1?'anno':'anni'} fa`;
+}
+
+const GIORNI = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+const MESI   = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+
+document.querySelectorAll('[id^="reldate-"]').forEach(el => {
+  const raw = el.dataset.date;
+  if (raw) el.textContent = timeAgo(raw);
+});
+
+document.querySelectorAll('[id^="absdate-"]').forEach(el => {
+  const raw = el.dataset.date;
+  if (!raw) return;
+  const d = new Date(raw);
+  if (isNaN(d)) { el.textContent = raw.slice(0,10); return; }
+  el.textContent = `${GIORNI[d.getDay()]}, ${d.getDate()} ${MESI[d.getMonth()]} ${d.getFullYear()}`;
+});
+
+// ── ETA calculation ───────────────────────────────────────
+let _processingStart = null;
+let _processingStartCount = null;
+
+function calcETA(processed, total) {
+  if (!processed || !total || processed >= total) return null;
+  if (!_processingStart) {
+    _processingStart = Date.now();
+    _processingStartCount = processed;
+    return null;
+  }
+  const done = processed - _processingStartCount;
+  if (done <= 0) return null;
+  const elapsed = (Date.now() - _processingStart) / 1000;
+  const rate = done / elapsed; // emails/sec
+  const remaining = total - processed;
+  const etaSec = Math.round(remaining / rate);
+  if (etaSec < 60)   return `~${etaSec}s rimanenti`;
+  if (etaSec < 3600) return `~${Math.floor(etaSec/60)}min rimanenti`;
+  return `~${Math.floor(etaSec/3600)}h ${Math.floor((etaSec%3600)/60)}min rimanenti`;
+}
+
 // ── HUD ───────────────────────────────────────────────────
 function updateHUD() {
   fetch('/stats').then(r => r.json()).then(d => {
-    document.getElementById('hudTotal').textContent      = d.total_archived.toLocaleString();
+    document.getElementById('hudTotal').textContent       = d.total_archived.toLocaleString();
     document.getElementById('hudUnprocessed').textContent = d.unprocessed.toLocaleString();
-    document.getElementById('hudMaildir').textContent    = d.total_maildir.toLocaleString();
-    document.getElementById('hudGmail').textContent      = d.total_gmail.toLocaleString();
-    document.getElementById('hudLastSync').textContent   = d.last_sync || 'N/A';
+    document.getElementById('hudMaildir').textContent     = d.total_maildir.toLocaleString();
+    document.getElementById('hudGmail').textContent       = d.total_gmail.toLocaleString();
+    document.getElementById('hudLastSync').textContent    = d.last_sync || 'N/A';
 
     const dot          = document.getElementById('processingDot');
     const label        = document.getElementById('processingLabel');
     const progressWrap = document.getElementById('progressWrap');
     const progressBar  = document.getElementById('progressBar');
     const progressText = document.getElementById('progressText');
+    const etaInfo      = document.getElementById('etaInfo');
     const lastRunInfo  = document.getElementById('lastRunInfo');
     const btn          = document.getElementById('processBtn');
 
@@ -400,19 +519,37 @@ function updateHUD() {
       progressWrap.style.display = 'block';
       progressText.style.display = 'block';
       lastRunInfo.style.display  = 'none';
+
       const pct = d.processing.total > 0
         ? Math.round((d.processing.processed / d.processing.total) * 100) : 0;
       progressBar.style.width = pct + '%';
-      progressText.textContent = `${d.processing.processed.toLocaleString()} / ${d.processing.total.toLocaleString()} (${pct}%)`;
-      btn.disabled = true;
+      progressText.textContent =
+        `${d.processing.processed.toLocaleString()} / ${d.processing.total.toLocaleString()} (${pct}%)`;
+
+      // ETA
+      const eta = calcETA(d.processing.processed, d.processing.total);
+      if (eta) {
+        etaInfo.style.display = 'block';
+        etaInfo.textContent = `⏱ ${eta}`;
+      } else {
+        etaInfo.style.display = 'none';
+      }
+
+      btn.disabled  = true;
       btn.innerHTML = '⏳ Processing in corso...';
     } else {
+      // Reset ETA state when not running
+      _processingStart = null;
+      _processingStartCount = null;
+
       dot.className = 'processing-dot idle';
       label.textContent = 'Inattivo';
       progressWrap.style.display = 'none';
       progressText.style.display = 'none';
+      etaInfo.style.display      = 'none';
       btn.disabled  = false;
       btn.innerHTML = '🤖 Processa nuove email';
+
       if (d.processing.last_run) {
         lastRunInfo.style.display = 'block';
         lastRunInfo.textContent =
@@ -440,14 +577,47 @@ function filterByCategory(cat) {
   window.location = '/?' + params.toString();
 }
 
+// ── Preview tooltip ───────────────────────────────────────
+const previewEl  = document.getElementById('previewTooltip');
+const ptSubject  = document.getElementById('ptSubject');
+const ptMeta     = document.getElementById('ptMeta');
+const ptBody     = document.getElementById('ptBody');
+let previewTimer = null;
+
+function showPreview(e, row) {
+  previewTimer = setTimeout(() => {
+    ptSubject.textContent = row.dataset.subject || '(no subject)';
+    ptMeta.textContent    = `${row.dataset.sender || ''} · ${row.dataset.date?.slice(0,16) || ''}`;
+    ptBody.textContent    = row.dataset.summary
+      ? `📝 ${row.dataset.summary}`
+      : (row.dataset.body ? row.dataset.body.slice(0, 200) : '');
+    previewEl.style.display = 'block';
+    movePreview(e);
+  }, 400);
+}
+
+function movePreview(e) {
+  if (previewEl.style.display === 'none') return;
+  const x = e.clientX + 16;
+  const y = e.clientY + 8;
+  const w = previewEl.offsetWidth;
+  const h = previewEl.offsetHeight;
+  previewEl.style.left = (x + w > window.innerWidth  ? x - w - 32 : x) + 'px';
+  previewEl.style.top  = (y + h > window.innerHeight ? y - h - 16 : y) + 'px';
+}
+
+function hidePreview() {
+  clearTimeout(previewTimer);
+  previewEl.style.display = 'none';
+}
+
 // ── Sorting ───────────────────────────────────────────────
 function sortBy(col) {
   const params = new URLSearchParams(window.location.search);
   const currentSort  = params.get('sort') || 'date';
   const currentOrder = params.get('order') || 'desc';
-  const newOrder = (currentSort === col && currentOrder === 'desc') ? 'asc' : 'desc';
   params.set('sort', col);
-  params.set('order', newOrder);
+  params.set('order', currentSort === col && currentOrder === 'desc' ? 'asc' : 'desc');
   params.delete('page');
   window.location = '/?' + params.toString();
 }
@@ -566,7 +736,7 @@ function deleteSelected(deleteRemote) {
 // ── Processing ────────────────────────────────────────────
 function processEmails() {
   const btn = document.getElementById('processBtn');
-  btn.disabled = true;
+  btn.disabled  = true;
   btn.innerHTML = '⏳ Avvio...';
   fetch('/process', { method: 'POST' }).then(r => r.json()).then(d => {
     if (d.error) {

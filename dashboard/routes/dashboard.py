@@ -6,7 +6,6 @@ from routes.gmail import count_messages
 from config import SYNC_LOG
 
 bp = Blueprint('dashboard', __name__)
-
 PAGE_SIZE = 50
 
 @bp.route('/')
@@ -47,7 +46,11 @@ def index():
     page = min(page, total_pages)
     offset = (page - 1) * PAGE_SIZE
 
-    query += f' ORDER BY {sort} {order.upper()} LIMIT {PAGE_SIZE} OFFSET {offset}'
+    # date_ts è un timestamp Unix inserito dal processor (parsing RFC 2822)
+    # Fallback a processed_at per email già in DB senza date_ts
+    sort_expr = "COALESCE(date_ts, strftime('%s', processed_at))" if sort == 'date' else sort
+    query += f' ORDER BY {sort_expr} {order.upper()} LIMIT {PAGE_SIZE} OFFSET {offset}'
+
     emails = conn.execute(query, params).fetchall()
     total = conn.execute('SELECT COUNT(*) FROM emails').fetchone()[0]
     stats = conn.execute('''
@@ -75,6 +78,7 @@ def index():
         total_filtered=total_filtered,
         page_range=page_range,
     )
+
 
 @bp.route('/stats')
 def stats():
